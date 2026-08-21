@@ -223,15 +223,26 @@ cat > "${USCITA}/installa-rustdesk.bat" <<'BAT_EOF'
 setlocal ENABLEEXTENSIONS ENABLEDELAYEDEXPANSION
 title Installazione assistenza remota
 
+rem Se non siamo amministratori ci si rilancia da soli, chiedendo a Windows
+rem l'elevazione: al cliente basta un doppio clic e un "Si" alla richiesta,
+rem senza dover conoscere il menu del tasto destro.
 net session >nul 2>&1
 if errorlevel 1 (
   echo.
-  echo  Questo programma va avviato come amministratore.
-  echo  Chiudi questa finestra, fai clic destro sul file
-  echo  e scegli "Esegui come amministratore".
-  echo.
-  pause
-  exit /b 1
+  echo  Richiedo l'autorizzazione di Windows...
+  rem il percorso passa da una variabile d'ambiente: cosi' spazi e apostrofi
+  rem nel nome utente non rompono la riga di comando di PowerShell
+  set "SELF=%~f0"
+  powershell -NoProfile -Command "try { Start-Process -FilePath $env:SELF -Verb RunAs } catch { exit 1 }"
+  if errorlevel 1 (
+    echo.
+    echo  Autorizzazione negata.
+    echo  Senza i permessi di amministratore l'installazione non puo' proseguire.
+    echo  Riprova e rispondi "Si" alla richiesta di Windows.
+    echo.
+    pause
+  )
+  exit /b
 )
 
 set "CFG=@@CONFIG@@"
@@ -385,9 +396,9 @@ cat > "${USCITA}/index.html" <<'HTML_EOF'
   <div class="card">
     <p><a class="btn" href="installa-rustdesk.zip" download>Scarica il programma</a></p>
     <div class="warn">
-      Il file scaricato è una cartella compressa. <strong>Estraila</strong>, poi fai
-      <strong>clic destro</strong> su <code>installa-rustdesk.bat</code> e scegli
-      <strong>«Esegui come amministratore»</strong>. Un doppio clic normale non basta.
+      Il file scaricato è una cartella compressa: <strong>estraila</strong>, poi apri
+      <code>installa-rustdesk.bat</code> con un doppio clic. Windows chiederà
+      un'autorizzazione: rispondi <strong>Sì</strong>.
     </div>
   </div>
 
@@ -396,6 +407,7 @@ cat > "${USCITA}/index.html" <<'HTML_EOF'
     <ol>
       <li>Apri la cartella compressa scaricata ed <strong>estrai</strong> il contenuto (clic destro &rarr; <code>Estrai tutto</code>).</li>
       <li>Windows potrebbe avvisarti che il file proviene da Internet: scegli <code>Ulteriori informazioni</code> e poi <code>Esegui comunque</code>.</li>
+      <li>Alla richiesta di autorizzazione (finestra blu di Windows) rispondi <code>Sì</code>.</li>
       <li>Si apre una finestra nera: lascia che finisca, ci vuole circa un minuto.</li>
       <li>Alla fine compaiono un <strong>ID</strong> e una <strong>Password</strong>.</li>
       <li>Comunica quei due dati al tecnico, poi puoi chiudere la finestra.</li>
