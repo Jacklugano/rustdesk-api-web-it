@@ -12,7 +12,7 @@
 # relativo come ./data non si riferisce alla cartella che ti aspetti, ma alla
 # directory di lavoro interna dello stack. Crea le cartelle sull'host prima di
 # distribuire:
-#   sudo mkdir -p /opt/rustdesk/{data,api_data,postgres_data}
+#   sudo mkdir -p /opt/rustdesk/{data,api_data,postgres_data,downloads}
 
 services:
   db:
@@ -76,6 +76,9 @@ services:
     volumes:
       - /opt/rustdesk/api_data:/app/data
       - /opt/rustdesk/data:/rustdesk_key:ro
+      # pacchetto client generato da scripts/genera-client.sh,
+      # pubblicato su https://<dominio>/upload/ (accesso pubblico)
+      - /opt/rustdesk/downloads:/app/resources/public/upload:ro
     depends_on:
       db:
         condition: service_healthy

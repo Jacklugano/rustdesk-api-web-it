@@ -95,6 +95,62 @@ di `lejianwen/rustdesk-api` non sovrascrive la personalizzazione. Il rovescio
 della medaglia: se una versione futura del backend cambia le API chiamate dal
 frontend, la console montata resta indietro e va riallineata al repo originale.
 
+## Pacchetto client pronto da inviare
+
+Lo script [`scripts/genera-client.sh`](./scripts/genera-client.sh) produce un
+pacchetto di installazione già configurato sul tuo server, con una pagina di
+download da mandare al cliente.
+
+```bash
+sudo mkdir -p /opt/rustdesk/downloads
+
+./scripts/genera-client.sh \
+  --dominio rd.tuodominio.it \
+  --api https://rd.tuodominio.it
+```
+
+Genera tre file in `/opt/rustdesk/downloads`:
+
+| File | Contenuto |
+|---|---|
+| `index.html` | Pagina di download in italiano, con le istruzioni per il cliente |
+| `installa-rustdesk.bat` | Installazione automatica: scarica, installa, configura, imposta una password casuale e mostra ID e password |
+| `rustdesk.exe` | L'eseguibile ufficiale, servito dal tuo server invece che da GitHub |
+
+Monta la cartella nel servizio `api` (già presente in `deploy/portainer-stack.yml`):
+
+```yaml
+      - /opt/rustdesk/downloads:/app/resources/public/upload:ro
+```
+
+Poi invii al cliente un solo indirizzo: `https://<dominio>/upload/`
+
+### Perché uno script e non un eseguibile rinominato
+
+Il metodo storico — rinominare l'eseguibile in
+`rustdesk-host=dominio,key=chiave.exe` — **non funziona più** dalla versione
+1.4.x ([issue #15177](https://github.com/rustdesk/rustdesk/issues/15177)): il
+client si avvia ma resta su «Not Ready». Lo script usa invece `--config`, che
+è il meccanismo supportato e documentato per il deployment.
+
+La stringa di configurazione è il JSON `{"host","key","api"}` codificato in
+base64, con la stringa risultante rovesciata e privata del riempimento finale.
+Lo script la costruisce leggendo direttamente `id_ed25519.pub`, così non puoi
+sbagliare a trascrivere la chiave.
+
+### Da sapere
+
+- **La cartella `/upload` è pubblica**, senza autenticazione: chiunque conosca
+  l'indirizzo può scaricare il pacchetto. Il file contiene la chiave *pubblica*
+  del server, che non è un segreto, ma rivela l'indirizzo della tua
+  infrastruttura. Se ti interessa limitarlo, proteggi il percorso `/upload` con
+  una regola sul reverse proxy.
+- Il cliente deve avviare il file con **«Esegui come amministratore»**:
+  l'installazione del servizio richiede privilegi elevati. La pagina di download
+  lo spiega, ed è comunque il punto in cui si blocca più spesso.
+- Rigenera il pacchetto dopo aver cambiato dominio o chiave del server:
+  i valori sono incorporati nel file batch al momento della generazione.
+
 ## Distribuzione con Portainer
 
 Il repository contiene un [`Dockerfile`](./Dockerfile) che compila la console e

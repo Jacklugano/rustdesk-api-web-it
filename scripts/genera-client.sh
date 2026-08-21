@@ -1,0 +1,258 @@
+#!/usr/bin/env bash
+#
+# Genera un pacchetto di installazione RustDesk preconfigurato, pronto da
+# inviare a un cliente, e lo pubblica nella cartella scaricabile dell'API.
+#
+# Uso:
+#   ./genera-client.sh --dominio rd.tuodominio.it --api https://rd.tuodominio.it
+#
+# Opzioni:
+#   --dominio <host>     Host del server ID (obbligatorio)
+#   --api <url>          URL pubblico dell'API (default: https://<dominio>)
+#   --chiave <file>      File della chiave pubblica
+#                        (default: /opt/rustdesk/data/id_ed25519.pub)
+#   --uscita <dir>       Cartella di pubblicazione
+#                        (default: /opt/rustdesk/downloads)
+#   --versione <ver>     Versione RustDesk da scaricare (default: ultima)
+#   --senza-download     Non scaricare l'eseguibile (per provare la generazione)
+#
+set -euo pipefail
+
+DOMINIO=""
+API_URL=""
+CHIAVE_FILE="/opt/rustdesk/data/id_ed25519.pub"
+USCITA="/opt/rustdesk/downloads"
+VERSIONE=""
+SCARICA=1
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --dominio)        DOMINIO="$2"; shift 2 ;;
+    --api)            API_URL="$2"; shift 2 ;;
+    --chiave)         CHIAVE_FILE="$2"; shift 2 ;;
+    --uscita)         USCITA="$2"; shift 2 ;;
+    --versione)       VERSIONE="$2"; shift 2 ;;
+    --senza-download) SCARICA=0; shift ;;
+    -h|--help)        sed -n '2,20p' "$0"; exit 0 ;;
+    *) echo "Opzione sconosciuta: $1" >&2; exit 1 ;;
+  esac
+done
+
+[[ -n "$DOMINIO" ]] || { echo "Errore: --dominio è obbligatorio." >&2; exit 1; }
+[[ -n "$API_URL" ]] || API_URL="https://${DOMINIO}"
+
+if [[ ! -r "$CHIAVE_FILE" ]]; then
+  echo "Errore: chiave pubblica non leggibile: $CHIAVE_FILE" >&2
+  echo "Indicala con --chiave. È il file id_ed25519.pub generato da hbbs." >&2
+  exit 1
+fi
+
+# La chiave viene salvata da hbbs senza newline finale, ma un editor può
+# averla aggiunta: va tolta, altrimenti finisce dentro la config string.
+CHIAVE="$(tr -d '\r\n' < "$CHIAVE_FILE")"
+[[ -n "$CHIAVE" ]] || { echo "Errore: la chiave è vuota." >&2; exit 1; }
+
+# RustDesk accetta la configurazione come base64 del JSON, con la stringa
+# risultante rovesciata e senza il riempimento finale.
+JSON="$(printf '{"host":"%s:21116","key":"%s","api":"%s"}' "$DOMINIO" "$CHIAVE" "$API_URL")"
+CONFIG="$(printf '%s' "$JSON" | base64 -w0 | tr -d '=' | rev)"
+
+mkdir -p "$USCITA"
+
+# --- eseguibile ------------------------------------------------------------
+EXE="rustdesk.exe"
+if [[ "$SCARICA" -eq 1 ]]; then
+  if [[ -z "$VERSIONE" ]]; then
+    echo "Cerco l'ultima versione di RustDesk..."
+    VERSIONE="$(curl -fsSL https://api.github.com/repos/rustdesk/rustdesk/releases/latest \
+      | grep -m1 '"tag_name"' | cut -d'"' -f4)"
+    [[ -n "$VERSIONE" ]] || { echo "Errore: versione non determinata. Usa --versione." >&2; exit 1; }
+  fi
+  URL="https://github.com/rustdesk/rustdesk/releases/download/${VERSIONE}/rustdesk-${VERSIONE}-x86_64.exe"
+  echo "Scarico RustDesk ${VERSIONE}..."
+  curl -fL --progress-bar "$URL" -o "${USCITA}/${EXE}"
+  echo "Scaricato: ${USCITA}/${EXE}"
+else
+  VERSIONE="${VERSIONE:-non-scaricata}"
+  echo "Download saltato (--senza-download)."
+fi
+
+EXE_URL="${API_URL%/}/upload/${EXE}"
+
+# --- script di installazione per il cliente --------------------------------
+cat > "${USCITA}/installa-rustdesk.bat" <<'BAT_EOF'
+@echo off
+setlocal ENABLEEXTENSIONS ENABLEDELAYEDEXPANSION
+title Installazione assistenza remota
+
+net session >nul 2>&1
+if errorlevel 1 (
+  echo.
+  echo  Questo programma va avviato come amministratore.
+  echo  Chiudi questa finestra, fai clic destro sul file
+  echo  e scegli "Esegui come amministratore".
+  echo.
+  pause
+  exit /b 1
+)
+
+set "CFG=@@CONFIG@@"
+set "EXEURL=@@EXE_URL@@"
+
+rem password permanente casuale di 12 caratteri
+set "ALFA=ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789"
+set "PWD="
+for /L %%b in (1,1,12) do (
+  set /A R=!RANDOM! %% 57
+  for %%c in (!R!) do set "PWD=!PWD!!ALFA:~%%c,1!"
+)
+
+if not exist "%TEMP%\rd" mkdir "%TEMP%\rd"
+pushd "%TEMP%\rd"
+
+echo.
+echo  [1/4] Scarico il programma...
+curl -fL --progress-bar "%EXEURL%" -o rustdesk.exe
+if errorlevel 1 (
+  echo  Download non riuscito. Controlla la connessione a Internet.
+  pause & popd & exit /b 1
+)
+
+echo  [2/4] Installo...
+start /wait "" rustdesk.exe --silent-install
+timeout /t 15 /nobreak >nul
+
+set "RD=%ProgramFiles%\RustDesk\rustdesk.exe"
+if not exist "%RD%" (
+  echo  Installazione non riuscita: %RD% non trovato.
+  pause & popd & exit /b 1
+)
+
+echo  [3/4] Configuro il collegamento al server...
+start /wait "" "%RD%" --install-service
+timeout /t 10 /nobreak >nul
+"%RD%" --config %CFG%
+"%RD%" --password %PWD%
+
+rem il servizio rilegge la configurazione solo al riavvio
+net stop RustDesk >nul 2>&1
+net start RustDesk >nul 2>&1
+timeout /t 5 /nobreak >nul
+
+popd
+
+echo  [4/4] Leggo l'identificativo...
+rem eseguito dalla cartella di installazione: un percorso con spazi dentro
+rem un for /f richiede un annidamento di virgolette che cmd sbaglia spesso
+pushd "%ProgramFiles%\RustDesk"
+for /f "delims=" %%i in ('rustdesk.exe --get-id') do set "RID=%%i"
+popd
+cls
+echo.
+echo  ===========================================================
+echo    Installazione completata.
+echo.
+echo    Comunica questi due dati al tecnico:
+echo.
+echo      ID        : %RID%
+echo      Password  : %PWD%
+echo.
+echo  ===========================================================
+echo.
+echo  Puoi chiudere questa finestra.
+echo.
+pause
+BAT_EOF
+
+# I segnaposto sono sostituiti dopo la scrittura, così il contenuto del file
+# batch (pieno di % e !) non viene toccato dalla shell.
+sed -i "s|@@CONFIG@@|${CONFIG}|; s|@@EXE_URL@@|${EXE_URL}|" "${USCITA}/installa-rustdesk.bat"
+
+# --- pagina di download ----------------------------------------------------
+cat > "${USCITA}/index.html" <<'HTML_EOF'
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Assistenza remota — Download</title>
+<style>
+  :root {
+    --bg: #f4f6fb; --surface: #fff; --border: #e4e9f2;
+    --text: #1f2733; --muted: #6b7a90; --primary: #3b6ef0;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f141d; --surface: #171e2a; --border: #273140;
+      --text: #e6ebf2; --muted: #93a1b5;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 32px 20px; background: var(--bg); color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.6;
+  }
+  .wrap { max-width: 620px; margin: 0 auto; }
+  h1 { font-size: 24px; margin: 0 0 8px; letter-spacing: -0.02em; }
+  .sub { color: var(--muted); margin: 0 0 28px; }
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 24px; margin-bottom: 20px;
+  }
+  .btn {
+    display: inline-block; background: var(--primary); color: #fff;
+    text-decoration: none; padding: 14px 24px; border-radius: 8px;
+    font-weight: 600; font-size: 16px;
+  }
+  .btn:hover { filter: brightness(1.08); }
+  ol { padding-left: 20px; margin: 0; }
+  li { margin-bottom: 10px; }
+  .warn {
+    background: color-mix(in srgb, #d97706 12%, transparent);
+    border-left: 3px solid #d97706; padding: 12px 16px;
+    border-radius: 6px; font-size: 14px; margin-top: 16px;
+  }
+  code {
+    background: var(--bg); border: 1px solid var(--border);
+    padding: 2px 6px; border-radius: 4px; font-size: 13px;
+  }
+  footer { color: var(--muted); font-size: 13px; text-align: center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Assistenza remota</h1>
+  <p class="sub">Scarica e avvia il programma, poi comunica al tecnico i due dati che compariranno a schermo.</p>
+
+  <div class="card">
+    <p><a class="btn" href="installa-rustdesk.bat" download>Scarica il programma</a></p>
+    <div class="warn">
+      Dopo il download fai <strong>clic destro</strong> sul file scaricato e scegli
+      <strong>«Esegui come amministratore»</strong>. Un doppio clic normale non basta.
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 style="font-size:17px;margin:0 0 12px;">Cosa succede</h2>
+    <ol>
+      <li>Windows potrebbe avvisarti che il file proviene da Internet: scegli <code>Ulteriori informazioni</code> e poi <code>Esegui comunque</code>.</li>
+      <li>Si apre una finestra nera: lascia che finisca, ci vuole circa un minuto.</li>
+      <li>Alla fine compaiono un <strong>ID</strong> e una <strong>Password</strong>.</li>
+      <li>Comunica quei due dati al tecnico, poi puoi chiudere la finestra.</li>
+    </ol>
+  </div>
+
+  <footer>Il collegamento è cifrato e avviene solo quando lo autorizzi.</footer>
+</div>
+</body>
+</html>
+HTML_EOF
+
+echo
+echo "Fatto. Pacchetto in ${USCITA}:"
+ls -1sh "${USCITA}"
+echo
+echo "Pagina da inviare al cliente:"
+echo "  ${API_URL%/}/upload/"
