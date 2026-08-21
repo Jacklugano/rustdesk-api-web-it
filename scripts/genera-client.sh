@@ -164,21 +164,52 @@ echo "Chiave letta da: ${ORIGINE:-sconosciuta}"
 JSON="$(printf '{"host":"%s:21116","key":"%s","api":"%s"}' "$DOMINIO" "$CHIAVE" "$API_URL")"
 CONFIG="$(printf '%s' "$JSON" | base64 -w0 | tr -d '=' | rev)"
 
-mkdir -p "$USCITA"
+# La cartella di solito viene creata con sudo, quindi appartiene a root
+# mentre lo script gira da utente normale: senza questo controllo il primo
+# segnale del problema sarebbe un errore di curl a metà download.
+if ! mkdir -p "$USCITA" 2>/dev/null; then
+  echo "Errore: impossibile creare $USCITA" >&2
+  exit 1
+fi
+if [[ ! -w "$USCITA" ]]; then
+  cat >&2 <<AIUTO
+Errore: non hai permesso di scrittura su $USCITA
+
+La cartella appartiene probabilmente a root. Due soluzioni:
+
+  sudo chown -R "\$USER" "$USCITA"
+     (assegna la cartella al tuo utente, poi rilancia lo script)
+
+  sudo ./scripts/genera-client.sh ...
+     (oppure esegui direttamente lo script con sudo)
+AIUTO
+  exit 1
+fi
 
 # --- eseguibile ------------------------------------------------------------
 EXE="rustdesk.exe"
 if [[ "$SCARICA" -eq 1 ]]; then
+  URL=""
   if [[ -z "$VERSIONE" ]]; then
     echo "Cerco l'ultima versione di RustDesk..."
-    VERSIONE="$(curl -fsSL https://api.github.com/repos/rustdesk/rustdesk/releases/latest \
-      | grep -m1 '"tag_name"' | cut -d'"' -f4 || true)"
+    # Una sola chiamata: da qui si ricavano sia la versione sia l'indirizzo
+    # reale dell'eseguibile, senza doverlo ricostruire a mano e senza
+    # rompersi se un domani cambia lo schema dei nomi.
+    REL="$(curl -fsSL https://api.github.com/repos/rustdesk/rustdesk/releases/latest 2>/dev/null || true)"
+    VERSIONE="$(printf '%s' "$REL" | grep -m1 '"tag_name"' | cut -d'"' -f4 || true)"
+    URL="$(printf '%s' "$REL" | grep -oE 'https://[^"]+-x86_64\.exe' | head -1 || true)"
     [[ -n "$VERSIONE" ]] || { echo "Errore: versione non determinata. Usa --versione." >&2; exit 1; }
   fi
-  URL="https://github.com/rustdesk/rustdesk/releases/download/${VERSIONE}/rustdesk-${VERSIONE}-x86_64.exe"
+  [[ -n "$URL" ]] || URL="https://github.com/rustdesk/rustdesk/releases/download/${VERSIONE}/rustdesk-${VERSIONE}-x86_64.exe"
   echo "Scarico RustDesk ${VERSIONE}..."
-  curl -fL --progress-bar "$URL" -o "${USCITA}/${EXE}"
-  echo "Scaricato: ${USCITA}/${EXE}"
+  echo "  da: ${URL}"
+  if ! curl -fL --progress-bar "$URL" -o "${USCITA}/${EXE}"; then
+    rm -f "${USCITA}/${EXE}"
+    echo "Errore: download non riuscito da ${URL}" >&2
+    echo "Verifica la connessione, oppure indica una versione con --versione." >&2
+    exit 1
+  fi
+  echo "Scaricato: ${USCITA}/${EXE} ($(du -h "${USCITA}/${EXE}" | cut -f1))"
 else
   VERSIONE="${VERSIONE:-non-scaricata}"
   echo "Download saltato (--senza-download)."
