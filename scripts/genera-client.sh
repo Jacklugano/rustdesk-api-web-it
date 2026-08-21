@@ -52,53 +52,108 @@ done
 # La chiave si può ottenere in tre modi. Il percorso su disco è il meno
 # affidabile: con uno stack Portainer i volumi relativi finiscono nella
 # directory di lavoro interna, non dove ci si aspetta. Per questo, se non
-# viene indicato nulla, si legge direttamente dal container.
+# viene indicato nulla, la si cerca direttamente nei container in esecuzione.
 CHIAVE=""
 ORIGINE=""
+DIAGNOSI=""
+
+# Individua come invocare docker: diretto, con sudo, o per niente.
+DOCKER=""
+if command -v docker >/dev/null 2>&1; then
+  if docker ps >/dev/null 2>&1; then
+    DOCKER="docker"
+  elif sudo -n docker ps >/dev/null 2>&1; then
+    DOCKER="sudo docker"
+    echo "Nota: docker richiede privilegi elevati, uso sudo."
+  else
+    DIAGNOSI="$(docker ps 2>&1 | head -2 || true)"
+  fi
+else
+  DIAGNOSI="il comando docker non è installato"
+fi
+
+# Cerca la chiave dentro un container, provando i percorsi noti.
+leggi_da_container () {
+  $DOCKER exec "$1" sh -c '
+    cat /root/id_ed25519.pub 2>/dev/null ||
+    cat /rustdesk_key/id_ed25519.pub 2>/dev/null ||
+    { f=$(find / -maxdepth 5 -name id_ed25519.pub -print -quit 2>/dev/null); [ -n "$f" ] && cat "$f"; }
+  ' 2>/dev/null
+}
 
 if [[ -n "$CHIAVE_TESTO" ]]; then
   CHIAVE="$CHIAVE_TESTO"
   ORIGINE="parametro --chiave-testo"
+
 elif [[ -n "$CHIAVE_FILE" ]]; then
   [[ -r "$CHIAVE_FILE" ]] || { echo "Errore: file non leggibile: $CHIAVE_FILE" >&2; exit 1; }
   CHIAVE="$(cat "$CHIAVE_FILE")"
   ORIGINE="file $CHIAVE_FILE"
-elif command -v docker >/dev/null 2>&1; then
-  echo "Leggo la chiave dal container ${CONTAINER}..."
-  if CHIAVE="$(docker exec "$CONTAINER" cat /root/id_ed25519.pub 2>/dev/null)"; then
-    ORIGINE="container ${CONTAINER}"
-  else
-    CHIAVE=""
+
+elif [[ -n "$DOCKER" ]]; then
+  # Il nome del container non è prevedibile: Portainer antepone il nome dello
+  # stack, e chi ha scritto il compose può averlo cambiato. Si costruisce
+  # quindi una lista di candidati per nome e per immagine.
+  CANDIDATI=("$CONTAINER")
+  while IFS= read -r n; do [[ -n "$n" ]] && CANDIDATI+=("$n"); done < <(
+    $DOCKER ps --format '{{.Names}}' 2>/dev/null | grep -iE 'hbbs|hbbr' || true
+  )
+  while IFS= read -r n; do [[ -n "$n" ]] && CANDIDATI+=("$n"); done < <(
+    $DOCKER ps --format '{{.Names}}|{{.Image}}' 2>/dev/null \
+      | awk -F'|' '$2 ~ /rustdesk/ {print $1}' || true
+  )
+
+  VISTI=""
+  for c in "${CANDIDATI[@]}"; do
+    [[ -z "$c" ]] && continue
+    case " $VISTI " in *" $c "*) continue ;; esac
+    VISTI="$VISTI $c"
+    echo "Cerco la chiave nel container ${c}..."
+    K="$(leggi_da_container "$c" || true)"
+    if [[ -n "$K" ]]; then
+      CHIAVE="$K"
+      ORIGINE="container ${c}"
+      break
+    fi
+  done
+
+  if [[ -z "$CHIAVE" ]]; then
+    DIAGNOSI="container esaminati:${VISTI:- nessuno}"
   fi
 fi
 
 # Rimuove spazi e ritorni a capo: hbbs salva la chiave senza newline finale,
-# ma docker exec e gli editor possono aggiungerne uno, e finirebbe dentro la
+# ma docker exec e gli editor ne aggiungono uno, e finirebbe dentro la
 # stringa di configurazione rendendo la chiave non corrispondente.
-CHIAVE="$(printf '%s' "$CHIAVE" | tr -d '\r\n[:space:]')"
+CHIAVE="$(printf '%s' "$CHIAVE" | tr -d '[:space:]')"
 
 if [[ -z "$CHIAVE" ]]; then
-  cat >&2 <<'AIUTO'
-Errore: chiave pubblica non trovata.
+  {
+    echo "Errore: chiave pubblica non trovata."
+    echo
+    echo "Diagnosi: ${DIAGNOSI:-nessuna}"
+    if [[ -n "$DOCKER" ]]; then
+      echo
+      echo "Container attualmente in esecuzione:"
+      $DOCKER ps --format '  {{.Names}}  ({{.Image}})' 2>/dev/null || true
+    fi
+    cat <<'AIUTO'
 
-Il percorso dei dati dipende da come è stato creato lo stack. Con Portainer
-i volumi relativi finiscono nella sua directory interna, non in /opt/rustdesk.
+Come procedere, in ordine di comodità:
 
-Tre modi per procedere:
-
-  1. Leggila dal container (il più affidabile):
-       docker exec hbbs cat /root/id_ed25519.pub
-
-  2. Copiala dalla console web: home -> "Configurazione del server",
-     campo "Chiave pubblica", pulsante Copia. Poi:
+  1. Copiala dalla console web: home -> "Configurazione del server",
+     campo "Chiave pubblica", pulsante Copia. Poi rilancia con:
        ./genera-client.sh --dominio ... --chiave-testo "LA_CHIAVE"
 
-  3. Trova il file sul disco:
-       sudo find /var/lib/docker/volumes -name id_ed25519.pub 2>/dev/null
-     e passalo con --chiave /percorso/id_ed25519.pub
+  2. Indica il container giusto, scegliendolo dall'elenco qui sopra:
+       ./genera-client.sh --dominio ... --container <nome>
 
-Se il container non si chiama "hbbs", indicalo con --container <nome>.
+  3. Cerca il file sul disco e passalo con --chiave:
+       sudo find /var/lib/docker -name id_ed25519.pub 2>/dev/null
+
+Se docker richiede privilegi, rilancia lo script con sudo.
 AIUTO
+  } >&2
   exit 1
 fi
 
@@ -117,7 +172,7 @@ if [[ "$SCARICA" -eq 1 ]]; then
   if [[ -z "$VERSIONE" ]]; then
     echo "Cerco l'ultima versione di RustDesk..."
     VERSIONE="$(curl -fsSL https://api.github.com/repos/rustdesk/rustdesk/releases/latest \
-      | grep -m1 '"tag_name"' | cut -d'"' -f4)"
+      | grep -m1 '"tag_name"' | cut -d'"' -f4 || true)"
     [[ -n "$VERSIONE" ]] || { echo "Errore: versione non determinata. Usa --versione." >&2; exit 1; }
   fi
   URL="https://github.com/rustdesk/rustdesk/releases/download/${VERSIONE}/rustdesk-${VERSIONE}-x86_64.exe"
