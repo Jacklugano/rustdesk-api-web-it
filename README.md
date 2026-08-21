@@ -109,6 +109,16 @@ sudo mkdir -p /opt/rustdesk/downloads
   --api https://rd.tuodominio.it
 ```
 
+La chiave pubblica viene letta dal container `hbbs`, quindi funziona
+qualunque sia il percorso dei volumi. Se il container ha un altro nome usa
+`--container <nome>`; in alternativa puoi incollare la chiave direttamente con
+`--chiave-testo` (la copi dalla home della console, riquadro «Configurazione
+del server») o indicare il file con `--chiave`.
+
+> Non fidarti di un percorso fisso come `/opt/rustdesk/data/id_ed25519.pub`:
+> con uno stack creato in Portainer i volumi relativi finiscono nella sua
+> directory di lavoro interna, non dove ci si aspetta.
+
 Genera tre file in `/opt/rustdesk/downloads`:
 
 | File | Contenuto |

@@ -9,8 +9,12 @@
 # Opzioni:
 #   --dominio <host>     Host del server ID (obbligatorio)
 #   --api <url>          URL pubblico dell'API (default: https://<dominio>)
-#   --chiave <file>      File della chiave pubblica
-#                        (default: /opt/rustdesk/data/id_ed25519.pub)
+#   --chiave <file>      File della chiave pubblica. Se omesso, la chiave
+#                        viene letta dal container hbbs, che funziona
+#                        qualunque sia il percorso dei volumi.
+#   --chiave-testo <k>   Incolla la chiave direttamente (la trovi nella home
+#                        della console, riquadro "Configurazione del server")
+#   --container <nome>   Container da cui leggere la chiave (default: hbbs)
 #   --uscita <dir>       Cartella di pubblicazione
 #                        (default: /opt/rustdesk/downloads)
 #   --versione <ver>     Versione RustDesk da scaricare (default: ultima)
@@ -20,7 +24,9 @@ set -euo pipefail
 
 DOMINIO=""
 API_URL=""
-CHIAVE_FILE="/opt/rustdesk/data/id_ed25519.pub"
+CHIAVE_FILE=""
+CHIAVE_TESTO=""
+CONTAINER="hbbs"
 USCITA="/opt/rustdesk/downloads"
 VERSIONE=""
 SCARICA=1
@@ -30,6 +36,8 @@ while [[ $# -gt 0 ]]; do
     --dominio)        DOMINIO="$2"; shift 2 ;;
     --api)            API_URL="$2"; shift 2 ;;
     --chiave)         CHIAVE_FILE="$2"; shift 2 ;;
+    --chiave-testo)   CHIAVE_TESTO="$2"; shift 2 ;;
+    --container)      CONTAINER="$2"; shift 2 ;;
     --uscita)         USCITA="$2"; shift 2 ;;
     --versione)       VERSIONE="$2"; shift 2 ;;
     --senza-download) SCARICA=0; shift ;;
@@ -41,16 +49,60 @@ done
 [[ -n "$DOMINIO" ]] || { echo "Errore: --dominio è obbligatorio." >&2; exit 1; }
 [[ -n "$API_URL" ]] || API_URL="https://${DOMINIO}"
 
-if [[ ! -r "$CHIAVE_FILE" ]]; then
-  echo "Errore: chiave pubblica non leggibile: $CHIAVE_FILE" >&2
-  echo "Indicala con --chiave. È il file id_ed25519.pub generato da hbbs." >&2
+# La chiave si può ottenere in tre modi. Il percorso su disco è il meno
+# affidabile: con uno stack Portainer i volumi relativi finiscono nella
+# directory di lavoro interna, non dove ci si aspetta. Per questo, se non
+# viene indicato nulla, si legge direttamente dal container.
+CHIAVE=""
+ORIGINE=""
+
+if [[ -n "$CHIAVE_TESTO" ]]; then
+  CHIAVE="$CHIAVE_TESTO"
+  ORIGINE="parametro --chiave-testo"
+elif [[ -n "$CHIAVE_FILE" ]]; then
+  [[ -r "$CHIAVE_FILE" ]] || { echo "Errore: file non leggibile: $CHIAVE_FILE" >&2; exit 1; }
+  CHIAVE="$(cat "$CHIAVE_FILE")"
+  ORIGINE="file $CHIAVE_FILE"
+elif command -v docker >/dev/null 2>&1; then
+  echo "Leggo la chiave dal container ${CONTAINER}..."
+  if CHIAVE="$(docker exec "$CONTAINER" cat /root/id_ed25519.pub 2>/dev/null)"; then
+    ORIGINE="container ${CONTAINER}"
+  else
+    CHIAVE=""
+  fi
+fi
+
+# Rimuove spazi e ritorni a capo: hbbs salva la chiave senza newline finale,
+# ma docker exec e gli editor possono aggiungerne uno, e finirebbe dentro la
+# stringa di configurazione rendendo la chiave non corrispondente.
+CHIAVE="$(printf '%s' "$CHIAVE" | tr -d '\r\n[:space:]')"
+
+if [[ -z "$CHIAVE" ]]; then
+  cat >&2 <<'AIUTO'
+Errore: chiave pubblica non trovata.
+
+Il percorso dei dati dipende da come è stato creato lo stack. Con Portainer
+i volumi relativi finiscono nella sua directory interna, non in /opt/rustdesk.
+
+Tre modi per procedere:
+
+  1. Leggila dal container (il più affidabile):
+       docker exec hbbs cat /root/id_ed25519.pub
+
+  2. Copiala dalla console web: home -> "Configurazione del server",
+     campo "Chiave pubblica", pulsante Copia. Poi:
+       ./genera-client.sh --dominio ... --chiave-testo "LA_CHIAVE"
+
+  3. Trova il file sul disco:
+       sudo find /var/lib/docker/volumes -name id_ed25519.pub 2>/dev/null
+     e passalo con --chiave /percorso/id_ed25519.pub
+
+Se il container non si chiama "hbbs", indicalo con --container <nome>.
+AIUTO
   exit 1
 fi
 
-# La chiave viene salvata da hbbs senza newline finale, ma un editor può
-# averla aggiunta: va tolta, altrimenti finisce dentro la config string.
-CHIAVE="$(tr -d '\r\n' < "$CHIAVE_FILE")"
-[[ -n "$CHIAVE" ]] || { echo "Errore: la chiave è vuota." >&2; exit 1; }
+echo "Chiave letta da: ${ORIGINE:-sconosciuta}"
 
 # RustDesk accetta la configurazione come base64 del JSON, con la stringa
 # risultante rovesciata e senza il riempimento finale.
