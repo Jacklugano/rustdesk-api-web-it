@@ -306,6 +306,24 @@ BAT_EOF
 # batch (pieno di % e !) non viene toccato dalla shell.
 sed -i "s|@@CONFIG@@|${CONFIG}|; s|@@EXE_URL@@|${EXE_URL}|" "${USCITA}/installa-rustdesk.bat"
 
+# --- archivio ZIP ----------------------------------------------------------
+# Chrome ed Edge bloccano il download diretto dei file .bat, spesso senza
+# spiegazioni. Dentro uno ZIP passano, quindi lo ZIP è la via principale e il
+# .bat resta disponibile come ripiego.
+if command -v zip >/dev/null 2>&1; then
+  ( cd "$USCITA" && zip -q -j installa-rustdesk.zip installa-rustdesk.bat )
+elif command -v python3 >/dev/null 2>&1; then
+  python3 - "$USCITA" <<'PY'
+import sys, zipfile, os
+d = sys.argv[1]
+with zipfile.ZipFile(os.path.join(d, 'installa-rustdesk.zip'), 'w', zipfile.ZIP_DEFLATED) as z:
+    z.write(os.path.join(d, 'installa-rustdesk.bat'), 'installa-rustdesk.bat')
+PY
+else
+  echo "Attenzione: né zip né python3 disponibili, archivio non creato." >&2
+  echo "I browser bloccano il download diretto dei .bat: installa uno dei due." >&2
+fi
+
 # --- pagina di download ----------------------------------------------------
 cat > "${USCITA}/index.html" <<'HTML_EOF'
 <!doctype html>
@@ -365,9 +383,10 @@ cat > "${USCITA}/index.html" <<'HTML_EOF'
   <p class="sub">Scarica e avvia il programma, poi comunica al tecnico i due dati che compariranno a schermo.</p>
 
   <div class="card">
-    <p><a class="btn" href="installa-rustdesk.bat" download>Scarica il programma</a></p>
+    <p><a class="btn" href="installa-rustdesk.zip" download>Scarica il programma</a></p>
     <div class="warn">
-      Dopo il download fai <strong>clic destro</strong> sul file scaricato e scegli
+      Il file scaricato è una cartella compressa. <strong>Estraila</strong>, poi fai
+      <strong>clic destro</strong> su <code>installa-rustdesk.bat</code> e scegli
       <strong>«Esegui come amministratore»</strong>. Un doppio clic normale non basta.
     </div>
   </div>
@@ -375,6 +394,7 @@ cat > "${USCITA}/index.html" <<'HTML_EOF'
   <div class="card">
     <h2 style="font-size:17px;margin:0 0 12px;">Cosa succede</h2>
     <ol>
+      <li>Apri la cartella compressa scaricata ed <strong>estrai</strong> il contenuto (clic destro &rarr; <code>Estrai tutto</code>).</li>
       <li>Windows potrebbe avvisarti che il file proviene da Internet: scegli <code>Ulteriori informazioni</code> e poi <code>Esegui comunque</code>.</li>
       <li>Si apre una finestra nera: lascia che finisca, ci vuole circa un minuto.</li>
       <li>Alla fine compaiono un <strong>ID</strong> e una <strong>Password</strong>.</li>
