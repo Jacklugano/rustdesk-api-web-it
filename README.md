@@ -1,0 +1,128 @@
+# RustDesk API Web IT
+
+Console di amministrazione per [RustDesk API](https://github.com/lejianwen/rustdesk-api)
+**in italiano**, con l'interfaccia rinnovata.
+
+Fork di [lejianwen/rustdesk-api-web](https://github.com/lejianwen/rustdesk-api-web)
+(Vue 3 + Element Plus + Vite), il frontend servito dal backend su `/_admin/`.
+
+L'originale non include l'italiano tra le lingue disponibili.
+
+## Cosa cambia rispetto all'originale
+
+### Lingua italiana
+
+| File | Modifica |
+|---|---|
+| `src/utils/i18n/it.json` | **Nuovo.** Tutte le 184 chiavi tradotte |
+| `src/utils/i18n/en.json` | Aggiunte 11 chiavi mancanti usate dalla nuova home |
+| `src/utils/i18n.js` | Registrato `it`; aggiunto ripiego sull'inglese |
+| `src/store/app.js` | Locale Element Plus italiana; italiano come predefinito |
+
+Oltre alla traduzione sono stati corretti due difetti presenti a monte:
+
+- **Rilevamento della lingua del browser.** `navigator.language` restituisce
+  `it-IT`, che non corrispondeva a nessuna chiave: l'interfaccia mostrava le
+  chiavi grezze (`PeerManage`, `LastOnlineTime`…) invece del testo tradotto. Il
+  problema riguardava ogni lingua, non solo l'italiano. Ora il tag regionale
+  viene normalizzato (`it-IT` → `it`, `zh-HK` → `zh-TW`).
+- **Ripiego sull'inglese.** Una chiave assente da una traduzione mostrava il
+  proprio nome; ora ricade sull'inglese prima di arrendersi.
+
+### Interfaccia
+
+| File | Modifica |
+|---|---|
+| `src/styles/style.scss` | Sistema di design a token (colori, raggi, ombre) con tema chiaro e scuro; allineamento delle variabili Element Plus |
+| `src/layout/index.vue` | Intestazione chiara e fissa, sfondo pagina, spaziature |
+| `src/layout/components/aside.vue` | Barra laterale con gradiente, voci arrotondate, voce attiva evidenziata |
+| `src/layout/components/header.vue` | Logo e titolo ricomposti, pulsanti con stato hover |
+| `src/layout/components/setting/index.vue` | Contrasto corretto sull'intestazione chiara; lingua attiva evidenziata |
+| `src/views/login/login.vue` | Accesso rinnovato: sfondo sfumato, scheda in vetro smerigliato, layout adattivo |
+| `src/views/my/info.vue` | Home ricostruita, con il nuovo riquadro **Configurazione del server** |
+
+Il riquadro «Configurazione del server» mostra Server ID, relay, API e chiave
+pubblica, ciascuno con pulsante di copia: sono i valori da inserire nei client
+RustDesk, che prima andavano cercati altrove.
+
+La palette è definita una sola volta come token CSS in `style.scss`: per
+cambiare il colore principale basta modificare `$primaryColor`.
+
+## Compilazione
+
+Servono Node.js 18+ e npm.
+
+```bash
+npm install
+npm run build
+```
+
+Il risultato finisce in `dist/`.
+
+> Il `package-lock.json` originale puntava a `registry.npmmirror.com` (mirror
+> cinese), spesso lento o irraggiungibile dall'Europa. I 257 URL sono stati
+> riscritti su `registry.npmjs.org`.
+
+## Installazione nel container
+
+Il backend serve la console dalla cartella `resources/admin`. Copia lì il
+contenuto di `dist/` e montalo nel container:
+
+```bash
+mkdir -p ~/rustdesk/admin-it
+cp -r dist/* ~/rustdesk/admin-it/
+```
+
+Poi aggiungi il montaggio al servizio `api` nel `docker-compose.yml`:
+
+```yaml
+    volumes:
+      - ./api_data:/app/data
+      - ./data:/rustdesk_key:ro
+      - ./admin-it:/app/resources/admin:ro   # console personalizzata
+```
+
+Infine:
+
+```bash
+docker compose up -d --force-recreate api
+```
+
+La console resta su `http://<dominio>:21114/_admin/`.
+
+Il montaggio è in sola lettura e separato dall'immagine, quindi un aggiornamento
+di `lejianwen/rustdesk-api` non sovrascrive la personalizzazione. Il rovescio
+della medaglia: se una versione futura del backend cambia le API chiamate dal
+frontend, la console montata resta indietro e va riallineata al repo originale.
+
+## Verifica dopo il primo avvio
+
+1. L'interfaccia è in italiano. In caso contrario selezionala dal menu della
+   lingua in alto a destra.
+2. Nella home compare il riquadro «Configurazione del server» con i valori
+   corretti. Se mostra «Non configurato», mancano le variabili
+   `RUSTDESK_API_RUSTDESK_*` nel `docker-compose.yml` del backend.
+3. Il tema scuro funziona con l'interruttore in alto a destra.
+
+## Allineamento con il repo originale
+
+```bash
+git remote add upstream https://github.com/lejianwen/rustdesk-api-web
+git fetch upstream
+git merge upstream/master
+```
+
+I conflitti si concentrano nei file elencati sopra. `src/utils/i18n/it.json` non
+esiste a monte e non genera conflitti, ma dopo un merge conviene controllare che
+non siano state aggiunte nuove chiavi da tradurre:
+
+```bash
+node -e "const a=require('./src/utils/i18n/en.json'),b=require('./src/utils/i18n/it.json');
+console.log('da tradurre:', Object.keys(a).filter(k=>!(k in b)))"
+```
+
+## Licenza
+
+MIT, come l'originale. Il file [`LICENSE`](./LICENSE) conserva la nota di
+copyright a monte (vue-manage-system). Grazie a
+[lejianwen](https://github.com/lejianwen) per il progetto di partenza.
