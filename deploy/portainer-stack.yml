@@ -8,6 +8,9 @@
 # console italiana. Le variabili si impostano nella sezione "Environment
 # variables" della schermata dello stack.
 #
+# WS_HOST vale wss://<dominio> se hai configurato il reverse proxy per il
+# web client (vedi README), altrimenti lascialo vuoto.
+#
 # I percorsi dei volumi sono ASSOLUTI di proposito: in Portainer un percorso
 # relativo come ./data non si riferisce alla cartella che ti aspetti, ma alla
 # directory di lavoro interna dello stack. Crea le cartelle sull'host prima di
@@ -73,6 +76,10 @@ services:
       - RUSTDESK_API_RUSTDESK_API_SERVER=${API_SERVER_URL}
       - RUSTDESK_API_RUSTDESK_KEY_FILE=/rustdesk_key/id_ed25519.pub
       - RUSTDESK_API_JWT_KEY=${API_SECRET_KEY}
+      # Web client: servito su /webclient/. Il browser, su una pagina HTTPS,
+      # rifiuta le WebSocket in chiaro, quindi serve wss:// tramite il reverse
+      # proxy. Lascia vuoto per disattivarlo.
+      - RUSTDESK_API_RUSTDESK_WS_HOST=${WS_HOST}
     volumes:
       - /opt/rustdesk/api_data:/app/data
       - /opt/rustdesk/data:/rustdesk_key:ro

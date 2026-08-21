@@ -161,6 +161,76 @@ sbagliare a trascrivere la chiave.
 - Rigenera il pacchetto dopo aver cambiato dominio o chiave del server:
   i valori sono incorporati nel file batch al momento della generazione.
 
+## Web client
+
+Il backend serve un client web su `https://<dominio>/webclient/` (l'anteprima v2
+è su `/webclient2/`). È attivo per impostazione predefinita: la voce
+`app.web-client` vale `1`.
+
+Aprirlo però non basta. Su una pagina HTTPS il browser rifiuta le WebSocket in
+chiaro, e il client web parla con hbbs e hbbr **solo** via WebSocket, non su
+TCP/UDP. Servono quindi due cose.
+
+### 1. Il reverse proxy inoltra le WebSocket
+
+Su pfSense, nel frontend HAProxy, due ACL e due backend:
+
+| Percorso | Backend |
+|---|---|
+| `/ws/id` | `10.10.17.19:21118` (hbbs) |
+| `/ws/relay` | `10.10.17.19:21119` (hbbr) |
+
+Nel backend attiva l'opzione per l'inoltro delle WebSocket e assicurati che
+l'header `X-Real-IP` venga impostato dal proxy.
+
+L'equivalente in Nginx, per riferimento:
+
+```nginx
+location /ws/id {
+    proxy_pass http://127.0.0.1:21118;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "Upgrade";
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_read_timeout 120s;
+}
+location /ws/relay {
+    proxy_pass http://127.0.0.1:21119;
+    # ...stesse direttive
+}
+```
+
+### 2. Il backend dichiara l'indirizzo WebSocket
+
+```yaml
+      - RUSTDESK_API_RUSTDESK_WS_HOST=wss://edesk.tuodominio.ch
+```
+
+Il valore viene iniettato nella pagina del client web come `window.ws_host`.
+Senza, il client non sa dove aprire la connessione.
+
+### Le porte 21118 e 21119 non vanno aperte sul firewall
+
+Vanno raggiunte **solo** dal reverse proxy. hbbs e hbbr si fidano ciecamente
+degli header `X-Real-IP` e `X-Forwarded-For` sulle connessioni WebSocket, senza
+validarli: chi le raggiunge direttamente da Internet può dichiarare qualsiasi
+IP, falsificando i log e aggirando eventuali blocchi per indirizzo. Niente port
+forward su queste due, quindi.
+
+Ricorda però il firewall **dell'host Docker**: hbbs e hbbr girano in
+`network_mode: host` e non beneficiano dello scavalcamento che Docker applica
+alle porte pubblicate, quindi le loro porte vanno permesse esplicitamente.
+
+```bash
+sudo ufw allow from <IP_del_proxy> to any port 21118,21119 proto tcp
+```
+
+### Nota sul comportamento
+
+Un client che usa WebSocket non impiega TCP/UDP diretti e passa **sempre dal
+relay**, tranne che nelle connessioni per IP diretto. Le sessioni dal browser
+saranno quindi un po' più lente di quelle da client nativo.
+
 ## Distribuzione con Portainer
 
 Il repository contiene un [`Dockerfile`](./Dockerfile) che compila la console e
