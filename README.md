@@ -95,6 +95,34 @@ di `lejianwen/rustdesk-api` non sovrascrive la personalizzazione. Il rovescio
 della medaglia: se una versione futura del backend cambia le API chiamate dal
 frontend, la console montata resta indietro e va riallineata al repo originale.
 
+## Distribuzione con Portainer
+
+Il repository contiene un [`Dockerfile`](./Dockerfile) che compila la console e
+la inserisce nell'immagine del backend, e uno stack pronto in
+[`deploy/portainer-stack.yml`](./deploy/portainer-stack.yml).
+
+In Portainer: **Stacks → Add stack → Repository**
+
+| Campo | Valore |
+|---|---|
+| Repository URL | `https://github.com/Jacklugano/rustdesk-api-web-it` |
+| Compose path | `deploy/portainer-stack.yml` |
+
+Prima di distribuire, crea le cartelle sull'host:
+
+```bash
+sudo mkdir -p /opt/rustdesk/{data,api_data,postgres_data}
+```
+
+Poi compila le variabili nella sezione «Environment variables» dello stack:
+`MY_DOMAIN`, `API_PORT_EXTERNAL`, `API_SERVER_URL`, `DB_NAME`, `DB_USER`,
+`DB_PASSWORD`, `API_SECRET_KEY`.
+
+I percorsi dei volumi nello stack sono **assoluti** di proposito: in Portainer
+un percorso relativo non si riferisce alla cartella dello stack come ci si
+aspetterebbe, ma a una directory di lavoro interna, ed è la causa più comune di
+dati che «spariscono» dopo un aggiornamento dello stack.
+
 ## Verifica dopo il primo avvio
 
 1. L'interfaccia è in italiano. In caso contrario selezionala dal menu della

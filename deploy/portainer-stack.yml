@@ -1,0 +1,84 @@
+# Stack RustDesk completo per Portainer.
+#
+# Metodo di distribuzione: Stacks -> Add stack -> Repository
+#   Repository URL:  https://github.com/Jacklugano/rustdesk-api-web-it
+#   Compose path:    deploy/portainer-stack.yml
+#
+# Portainer clona il repository e compila l'immagine dell'API includendo la
+# console italiana. Le variabili si impostano nella sezione "Environment
+# variables" della schermata dello stack.
+#
+# I percorsi dei volumi sono ASSOLUTI di proposito: in Portainer un percorso
+# relativo come ./data non si riferisce alla cartella che ti aspetti, ma alla
+# directory di lavoro interna dello stack. Crea le cartelle sull'host prima di
+# distribuire:
+#   sudo mkdir -p /opt/rustdesk/{data,api_data,postgres_data}
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: rustdesk-db
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - /opt/rustdesk/postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: always
+
+  hbbs:
+    image: rustdesk/rustdesk-server:latest
+    container_name: hbbs
+    command: hbbs -r ${MY_DOMAIN}:21117 -k _
+    network_mode: host
+    volumes:
+      - /opt/rustdesk/data:/root
+    restart: always
+
+  hbbr:
+    image: rustdesk/rustdesk-server:latest
+    container_name: hbbr
+    command: hbbr -k _
+    network_mode: host
+    volumes:
+      - /opt/rustdesk/data:/root
+    restart: always
+
+  api:
+    # Compila l'immagine dal repository: backend ufficiale + console italiana.
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: rustdesk-api
+    ports:
+      - "${API_PORT_EXTERNAL}:21114"
+    environment:
+      - TZ=Europe/Rome
+      - RUSTDESK_API_LANG=en
+      - RUSTDESK_API_GORM_TYPE=postgresql
+      - RUSTDESK_API_POSTGRESQL_HOST=db
+      - RUSTDESK_API_POSTGRESQL_PORT=5432
+      - RUSTDESK_API_POSTGRESQL_USER=${DB_USER}
+      - RUSTDESK_API_POSTGRESQL_PASSWORD=${DB_PASSWORD}
+      - RUSTDESK_API_POSTGRESQL_DBNAME=${DB_NAME}
+      - RUSTDESK_API_POSTGRESQL_SSLMODE=disable
+      - RUSTDESK_API_POSTGRESQL_TIME_ZONE=Europe/Rome
+      - RUSTDESK_API_RUSTDESK_ID_SERVER=${MY_DOMAIN}:21116
+      - RUSTDESK_API_RUSTDESK_RELAY_SERVER=${MY_DOMAIN}:21117
+      - RUSTDESK_API_RUSTDESK_API_SERVER=${API_SERVER_URL}
+      - RUSTDESK_API_RUSTDESK_KEY_FILE=/rustdesk_key/id_ed25519.pub
+      - RUSTDESK_API_JWT_KEY=${API_SECRET_KEY}
+    volumes:
+      - /opt/rustdesk/api_data:/app/data
+      - /opt/rustdesk/data:/rustdesk_key:ro
+    depends_on:
+      db:
+        condition: service_healthy
+      hbbs:
+        condition: service_started
+    restart: always
