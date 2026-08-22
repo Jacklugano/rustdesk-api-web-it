@@ -277,6 +277,49 @@ base64, con la stringa risultante rovesciata e privata del riempimento finale.
 Lo script la costruisce leggendo direttamente `id_ed25519.pub`, così non puoi
 sbagliare a trascrivere la chiave.
 
+### Link temporanei per singolo intervento
+
+La cartella pubblicata e' accessibile a chiunque ne conosca l'indirizzo.
+`scripts/nuovo-link.sh` permette di non esporla affatto: il pacchetto resta in
+una cartella **non pubblicata**, e per ogni intervento se ne espone una copia
+sotto un percorso casuale che scade da solo.
+
+Genera il pacchetto fuori dalla cartella servita:
+
+```bash
+./scripts/genera-client.sh --dominio ... --chiave-testo "..." \
+    --uscita /opt/rustdesk/pacchetto
+```
+
+Poi, a ogni richiesta di assistenza:
+
+```bash
+./scripts/nuovo-link.sh --url https://<dominio>
+```
+
+```
+Link per questo intervento (valido 8 ore):
+
+  https://<dominio>/upload/s-cf74993f2f75ae37a6/
+
+Per revocarlo subito:  ./nuovo-link.sh --revoca cf74993f2f75ae37a6
+```
+
+| Comando | Effetto |
+|---|---|
+| `--ore 2` | cambia la durata di validita' |
+| `--elenco` | mostra i link attivi e da quanto esistono |
+| `--revoca <id>` | rimuove subito una pubblicazione |
+
+Le pubblicazioni scadute vengono rimosse a ogni esecuzione, quindi non serve
+configurare alcun cron. I file sono **collegamenti fisici** al pacchetto
+sorgente: cento link occupano lo spazio di uno.
+
+> Un link temporaneo limita chi puo' **trovare** il pacchetto, non chi lo ha
+> gia' scaricato. La chiave del server e' incorporata nel pacchetto e non
+> ruota, quindi una copia scaricata resta valida anche dopo la scadenza del
+> link. Serve a ridurre l'esposizione, non a revocare l'accesso.
+
 ### Da sapere
 
 - **La cartella `/upload` è pubblica**, senza autenticazione: chiunque conosca
