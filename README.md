@@ -151,6 +151,17 @@ cross-compilatore mingw-w64:
 ```bash
 sudo apt install mingw-w64          # una volta sola
 
+./scripts/genera-client.sh --dominio ... --chiave-testo "..." --con-exe
+```
+
+Con `--con-exe` il generatore compila l'installer subito dopo aver prodotto lo
+script PowerShell, e la pagina di download lo propone nella stessa passata.
+Senza quell'opzione servirebbero tre comandi in sequenza, perché la pagina
+decide cosa offrire in base alla presenza dell'eseguibile.
+
+Volendo compilare separatamente:
+
+```bash
 ./scripts/genera-exe.sh
 ```
 
@@ -169,6 +180,11 @@ Personalizzabile:
 Il manifesto richiede i privilegi **prima** dell'avvio, quindi Windows mostra
 la richiesta di elevazione con il nome che hai impostato. Il launcher scrive lo
 script in una cartella temporanea, lo esegue con PowerShell e lo rimuove.
+
+> Esegui sempre i due script **con lo stesso utente**. Lanciandone uno con
+> `sudo` i file prodotti appartengono a root, e il successivo, eseguito senza,
+> non riesce piu' a scrivere nella cartella. Se succede:
+> `sudo chown -R "$USER" /opt/rustdesk/downloads`
 
 #### Compilando su Windows con PS2EXE
 

@@ -19,6 +19,8 @@
 #                        (default: /opt/rustdesk/downloads)
 #   --versione <ver>     Versione RustDesk da scaricare (default: ultima)
 #   --senza-download     Non scaricare l'eseguibile (per provare la generazione)
+#   --con-exe            Compila anche l'installer Windows con icona, invocando
+#                        genera-exe.sh, e lo propone nella pagina di download
 #
 set -euo pipefail
 
@@ -30,6 +32,7 @@ CONTAINER="hbbs"
 USCITA="/opt/rustdesk/downloads"
 VERSIONE=""
 SCARICA=1
+CON_EXE=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -41,6 +44,7 @@ while [[ $# -gt 0 ]]; do
     --uscita)         USCITA="$2"; shift 2 ;;
     --versione)       VERSIONE="$2"; shift 2 ;;
     --senza-download) SCARICA=0; shift ;;
+    --con-exe)        CON_EXE=1; shift ;;
     -h|--help)        sed -n '2,20p' "$0"; exit 0 ;;
     *) echo "Opzione sconosciuta: $1" >&2; exit 1 ;;
   esac
@@ -444,6 +448,20 @@ PY
 else
   echo "Attenzione: né zip né python3 disponibili, archivio non creato." >&2
   echo "I browser bloccano il download diretto dei .bat: installa uno dei due." >&2
+fi
+
+# --- installer Windows compilato -------------------------------------------
+# Va fatto prima della pagina, che decide cosa proporre in base alla presenza
+# dell'eseguibile: invertendo l'ordine servirebbe una seconda passata.
+if [[ "$CON_EXE" -eq 1 ]]; then
+  COMPILA="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/genera-exe.sh"
+  if [[ ! -x "$COMPILA" ]]; then
+    echo "Errore: $COMPILA non trovato o non eseguibile." >&2
+    exit 1
+  fi
+  echo
+  "$COMPILA" --ps1 "${USCITA}/installa-rustdesk.ps1" --uscita "$USCITA"
+  echo
 fi
 
 # --- pagina di download ----------------------------------------------------
