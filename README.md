@@ -143,7 +143,21 @@ batch dentro lo ZIP il cliente guadagna parecchio: un solo doppio clic, niente
 estrazione, niente blocco del browser sugli script, e la richiesta di Windows
 mostra il tuo nome invece di `cmd.exe`.
 
-Su una macchina Windows:
+Sulla macchina Windows, scarica i due file dal tuo stesso server — il
+generatore pubblica anche l'icona, così non serve passare da GitHub né
+autenticarsi:
+
+```powershell
+mkdir $env:USERPROFILE\rustdesk-build -Force
+cd $env:USERPROFILE\rustdesk-build
+
+Invoke-WebRequest https://<dominio>/upload/installa-rustdesk.ps1 -OutFile installa-rustdesk.ps1
+Invoke-WebRequest https://<dominio>/upload/elettrosmart.ico      -OutFile elettrosmart.ico
+```
+
+Lo script **va preso dal server**, non dal repository: quello pubblicato
+contiene già la configurazione del tuo server, mentre nel repository esiste
+solo il modello con i segnaposto. Poi:
 
 ```powershell
 Install-Module ps2exe -Scope CurrentUser

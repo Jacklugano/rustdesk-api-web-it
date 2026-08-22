@@ -317,6 +317,15 @@ BAT_EOF
 # batch (pieno di % e !) non viene toccato dalla shell.
 sed -i "s|@@CONFIG@@|${CONFIG}|; s|@@EXE_URL@@|${EXE_URL}|" "${USCITA}/installa-rustdesk.bat"
 
+# --- icona ----------------------------------------------------------------
+# Serve solo al momento della compilazione dell'eseguibile, ma pubblicandola
+# qui la si scarica dalla macchina Windows con lo stesso indirizzo degli altri
+# file, senza passare da GitHub e senza autenticazione.
+ICONA="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/branding/elettrosmart.ico"
+if [[ -f "$ICONA" ]]; then
+  cp -f "$ICONA" "${USCITA}/elettrosmart.ico"
+fi
+
 # --- script PowerShell (sorgente per l'eseguibile) -------------------------
 cat > "${USCITA}/installa-rustdesk.ps1" <<'PS_EOF'
 # Installazione assistenza remota.
