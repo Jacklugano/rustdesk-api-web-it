@@ -143,6 +143,37 @@ batch dentro lo ZIP il cliente guadagna parecchio: un solo doppio clic, niente
 estrazione, niente blocco del browser sugli script, e la richiesta di Windows
 mostra il tuo nome invece di `cmd.exe`.
 
+#### Compilando sul server (nessun Windows necessario)
+
+`scripts/genera-exe.sh` produce l'eseguibile direttamente sul server, usando il
+cross-compilatore mingw-w64:
+
+```bash
+sudo apt install mingw-w64          # una volta sola
+
+./scripts/genera-exe.sh
+```
+
+Prende lo script generato da `genera-client.sh`, lo incorpora in un piccolo
+launcher nativo insieme all'icona, al manifesto di elevazione e alle
+informazioni di versione, e scrive l'eseguibile nella cartella di
+pubblicazione. Rilanciando poi `genera-client.sh`, la pagina di download passa
+a proporre quello.
+
+Personalizzabile:
+
+```bash
+./scripts/genera-exe.sh --azienda "Nome Srl" --titolo "Assistenza" --versione 1.0.0
+```
+
+Il manifesto richiede i privilegi **prima** dell'avvio, quindi Windows mostra
+la richiesta di elevazione con il nome che hai impostato. Il launcher scrive lo
+script in una cartella temporanea, lo esegue con PowerShell e lo rimuove.
+
+#### Compilando su Windows con PS2EXE
+
+L'alternativa, se preferisci lo strumento più diffuso.
+
 Sulla macchina Windows, scarica i due file dal tuo stesso server — il
 generatore pubblica anche l'icona, così non serve passare da GitHub né
 autenticarsi:
