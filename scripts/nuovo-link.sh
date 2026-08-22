@@ -97,12 +97,94 @@ TOKEN="$(head -c 9 /dev/urandom | od -An -tx1 | tr -d ' \n')"
 DEST="${PUBBLICA}/s-${TOKEN}"
 mkdir -p "$DEST"
 
-# Collegamenti fisici invece di copie: i pacchetti sono identici a ogni
+# Collegamenti fisici invece di copie: i file pesanti sono identici a ogni
 # intervento, quindi cento link occupano lo spazio di uno.
 for f in "$PACCHETTO"/*; do
   [[ -f "$f" ]] || continue
-  ln "$f" "${DEST}/$(basename "$f")" 2>/dev/null || cp "$f" "${DEST}/"
+  n="$(basename "$f")"
+  [[ "$n" == "assistenza-rapida.zip" ]] && continue   # ricostruito qui sotto
+  ln "$f" "${DEST}/${n}" 2>/dev/null || cp "$f" "${DEST}/"
 done
+
+# --- configurazione servita a parte, non incorporata ------------------------
+# La chiave resta fuori dal pacchetto scaricato: il programma la preleva
+# all'avvio da questo indirizzo. Alla scadenza il file sparisce insieme alla
+# cartella, quindi una copia vecchia del pacchetto non riesce piu' a
+# configurarsi e si ferma con un messaggio chiaro.
+# Nel batch la stringa e' in  set "CFG=..."  e nel PowerShell in  $Cfg = '...'
+CONFIG_STR=""
+if [[ -f "${PACCHETTO}/installa-rustdesk.bat" ]]; then
+  CONFIG_STR="$(sed -n 's/^set "CFG=\([^"]*\)".*/\1/p' "${PACCHETTO}/installa-rustdesk.bat" | head -1)"
+fi
+if [[ -z "$CONFIG_STR" && -f "${PACCHETTO}/installa-rustdesk.ps1" ]]; then
+  CONFIG_STR="$(sed -n "s/^\$Cfg[[:space:]]*=[[:space:]]*'\([^']*\)'.*/\1/p" "${PACCHETTO}/installa-rustdesk.ps1" | head -1)"
+fi
+if [[ -z "$CONFIG_STR" ]]; then
+  echo "Errore: configurazione non estraibile dal pacchetto in ${PACCHETTO}" >&2
+  echo "Rigeneralo con genera-client.sh." >&2
+  rm -rf "$DEST"; exit 1
+fi
+printf '%s' "$CONFIG_STR" > "${DEST}/config.txt"
+
+SESSIONE="${BASE_URL}/upload/s-${TOKEN}"
+TMPZIP="$(mktemp -d)"
+cat > "${TMPZIP}/avvia-assistenza.bat" <<'PORT_EOF'
+@echo off
+setlocal
+title Assistenza remota
+cd /d "%TEMP%"
+
+set "BASE=@@SESSIONE@@"
+
+echo.
+echo  Preparazione in corso, attendi qualche secondo...
+echo.
+
+curl -fsS "%BASE%/config.txt" -o rd-config.txt
+if errorlevel 1 goto scaduto
+set /p CFG=<rd-config.txt
+del rd-config.txt >nul 2>&1
+if "%CFG%"=="" goto scaduto
+
+if not exist rustdesk-assistenza.exe (
+  curl -fL --progress-bar "%BASE%/rustdesk.exe" -o rustdesk-assistenza.exe
+  if errorlevel 1 goto scaduto
+)
+
+rustdesk-assistenza.exe --config %CFG%
+start "" "rustdesk-assistenza.exe"
+
+echo.
+echo  Si aprira' una finestra con il tuo ID e la tua password:
+echo  comunicali al tecnico e lascia la finestra aperta.
+echo.
+timeout /t 8 /nobreak >nul
+exit /b 0
+
+:scaduto
+echo.
+echo  ===========================================================
+echo    Questo collegamento non e' piu' valido.
+echo.
+echo    Chiedi al tecnico un nuovo link per l'assistenza.
+echo  ===========================================================
+echo.
+pause
+exit /b 1
+PORT_EOF
+sed -i "s|@@SESSIONE@@|${SESSIONE}|" "${TMPZIP}/avvia-assistenza.bat"
+
+if command -v zip >/dev/null 2>&1; then
+  ( cd "$TMPZIP" && zip -q -j "${DEST}/assistenza-rapida.zip" avvia-assistenza.bat )
+else
+  python3 - "$TMPZIP" "${DEST}/assistenza-rapida.zip" <<'PYZ'
+import sys, zipfile, os
+d, out = sys.argv[1], sys.argv[2]
+with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED) as z:
+    z.write(os.path.join(d, 'avvia-assistenza.bat'), 'avvia-assistenza.bat')
+PYZ
+fi
+rm -rf "$TMPZIP"
 
 echo
 echo "Link per questo intervento (valido ${ORE} ore):"

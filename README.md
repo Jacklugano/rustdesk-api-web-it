@@ -315,10 +315,30 @@ Le pubblicazioni scadute vengono rimosse a ogni esecuzione, quindi non serve
 configurare alcun cron. I file sono **collegamenti fisici** al pacchetto
 sorgente: cento link occupano lo spazio di uno.
 
-> Un link temporaneo limita chi puo' **trovare** il pacchetto, non chi lo ha
-> gia' scaricato. La chiave del server e' incorporata nel pacchetto e non
-> ruota, quindi una copia scaricata resta valida anche dopo la scadenza del
-> link. Serve a ridurre l'esposizione, non a revocare l'accesso.
+### Come scade davvero
+
+Il pacchetto portable pubblicato su un link temporaneo **non contiene la
+chiave**. Pesa qualche kilobyte e porta con se' solo l'indirizzo della propria
+sessione: la configurazione la preleva all'avvio da `config.txt`, servito nella
+stessa cartella.
+
+Alla scadenza la cartella sparisce, quindi anche una copia del pacchetto
+salvata dal cliente smette di funzionare e si ferma con un messaggio
+comprensibile:
+
+```
+  Questo collegamento non e' piu' valido.
+  Chiedi al tecnico un nuovo link per l'assistenza.
+```
+
+E' una differenza sostanziale rispetto al pacchetto diretto: il link non
+limita solo chi puo' **trovare** il download, ma revoca l'accesso a chi lo ha
+gia' scaricato.
+
+> L'eccezione e' la versione con **installazione permanente**, che resta nella
+> cartella di sessione con la configurazione incorporata. Li' e' voluto: quel
+> percorso serve proprio a lasciare un collegamento stabile, che per
+> definizione non puo' dipendere da un link che scade.
 
 ### Da sapere
 
