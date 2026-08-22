@@ -182,3 +182,56 @@ body {
 .el-dialog {
   border-radius: var(--app-radius);
 }
+
+/* ------------------------------------------------------------------
+   Adattamento a schermo piccolo (smartphone e tablet stretti)
+   ------------------------------------------------------------------ */
+@media (max-width: 768px) {
+  /* schede piu' compatte */
+  .el-card__body {
+    padding: 16px;
+  }
+
+  /* i moduli di filtro in cima agli elenchi: campi in colonna, a piena
+     larghezza, invece che affiancati e tagliati */
+  .list-query {
+    .el-form--inline .el-form-item {
+      display: block;
+      margin-right: 0;
+      width: 100%;
+    }
+    .el-form-item__content,
+    .el-select,
+    .el-input {
+      width: 100% !important;
+      --el-select-width: 100%;
+      --el-input-width: 100%;
+    }
+  }
+
+  /* le tabelle scorrono in orizzontale dentro il loro riquadro invece di
+     allargare la pagina */
+  .el-table {
+    font-size: 13px;
+  }
+
+  /* i dialoghi occupano quasi tutta la larghezza dello schermo */
+  .el-dialog {
+    width: 94vw !important;
+    max-width: 94vw;
+  }
+  .dialog-form {
+    max-width: 100%;
+  }
+
+  /* la paginazione va a capo invece di essere troncata */
+  .el-pagination {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  /* i pulsanti d'azione sotto le tabelle si dispongono su piu' righe */
+  .table-actions .el-button {
+    margin: 3px;
+  }
+}
