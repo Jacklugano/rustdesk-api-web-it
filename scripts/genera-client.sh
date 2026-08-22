@@ -317,18 +317,120 @@ BAT_EOF
 # batch (pieno di % e !) non viene toccato dalla shell.
 sed -i "s|@@CONFIG@@|${CONFIG}|; s|@@EXE_URL@@|${EXE_URL}|" "${USCITA}/installa-rustdesk.bat"
 
+# --- script PowerShell (sorgente per l'eseguibile) -------------------------
+cat > "${USCITA}/installa-rustdesk.ps1" <<'PS_EOF'
+# Installazione assistenza remota.
+# Compilabile in .exe con PS2EXE: vedi README, sezione "Eseguibile con icona".
+
+$ErrorActionPreference = 'Stop'
+$ProgressPreference    = 'SilentlyContinue'   # senza questo Invoke-WebRequest e' lentissimo
+
+$Cfg    = '@@CONFIG@@'
+$ExeUrl = '@@EXE_URL@@'
+
+function Riga($testo, $colore = 'Gray') { Write-Host $testo -ForegroundColor $colore }
+
+try {
+    $Host.UI.RawUI.WindowTitle = 'Assistenza remota'
+} catch { }
+
+# --- privilegi -------------------------------------------------------------
+$identita  = [Security.Principal.WindowsIdentity]::GetCurrent()
+$principal = New-Object Security.Principal.WindowsPrincipal($identita)
+if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    Riga ''
+    Riga '  Servono i privilegi di amministratore.' 'Yellow'
+    Riga '  Chiudi questa finestra, riavvia il programma e rispondi Si'
+    Riga '  alla richiesta di Windows.'
+    Riga ''
+    Read-Host '  Premi INVIO per chiudere' | Out-Null
+    exit 1
+}
+
+try {
+    # --- password permanente casuale ---------------------------------------
+    $alfabeto = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789'
+    $Password = -join (1..12 | ForEach-Object { $alfabeto[(Get-Random -Maximum $alfabeto.Length)] })
+
+    $cartella = Join-Path $env:TEMP 'rustdesk-setup'
+    New-Item -ItemType Directory -Force -Path $cartella | Out-Null
+    $scaricato = Join-Path $cartella 'rustdesk.exe'
+
+    Riga ''
+    Riga '  [1/4] Scarico il programma...' 'Cyan'
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    Invoke-WebRequest -Uri $ExeUrl -OutFile $scaricato -UseBasicParsing
+
+    Riga '  [2/4] Installo...' 'Cyan'
+    Start-Process -FilePath $scaricato -ArgumentList '--silent-install' -Wait
+
+    # L'installer termina prima che i file siano al loro posto: si attende
+    # l'eseguibile invece di sperare in una pausa a tempo fisso.
+    $rustdesk = Join-Path $env:ProgramFiles 'RustDesk\rustdesk.exe'
+    $scadenza = (Get-Date).AddSeconds(120)
+    while (-not (Test-Path $rustdesk) -and (Get-Date) -lt $scadenza) {
+        Start-Sleep -Seconds 2
+    }
+    if (-not (Test-Path $rustdesk)) {
+        throw "Installazione non riuscita: $rustdesk non trovato."
+    }
+
+    Riga '  [3/4] Configuro il collegamento al server...' 'Cyan'
+    Start-Process -FilePath $rustdesk -ArgumentList '--install-service' -Wait
+    Start-Sleep -Seconds 8
+    & $rustdesk --config $Cfg
+    & $rustdesk --password $Password
+
+    # il servizio rilegge la configurazione solo al riavvio
+    Restart-Service -Name 'RustDesk' -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 5
+
+    Riga '  [4/4] Leggo l''identificativo...' 'Cyan'
+    $Identificativo = (& $rustdesk --get-id | Select-Object -Last 1)
+    if ($Identificativo) { $Identificativo = $Identificativo.ToString().Trim() }
+
+    Clear-Host
+    Riga ''
+    Riga '  ===========================================================' 'DarkCyan'
+    Riga ''
+    Riga '    Installazione completata.' 'Green'
+    Riga ''
+    Riga '    Comunica questi due dati al tecnico:'
+    Riga ''
+    Riga "      ID        :  $Identificativo" 'White'
+    Riga "      Password  :  $Password" 'White'
+    Riga ''
+    Riga '  ===========================================================' 'DarkCyan'
+    Riga ''
+    Read-Host '  Premi INVIO per chiudere' | Out-Null
+}
+catch {
+    Riga ''
+    Riga '  Qualcosa non ha funzionato:' 'Red'
+    Riga "  $($_.Exception.Message)" 'Red'
+    Riga ''
+    Riga '  Riferisci questo messaggio al tecnico.'
+    Riga ''
+    Read-Host '  Premi INVIO per chiudere' | Out-Null
+    exit 1
+}
+PS_EOF
+
+sed -i "s|@@CONFIG@@|${CONFIG}|; s|@@EXE_URL@@|${EXE_URL}|" "${USCITA}/installa-rustdesk.ps1"
+
 # --- archivio ZIP ----------------------------------------------------------
 # Chrome ed Edge bloccano il download diretto dei file .bat, spesso senza
 # spiegazioni. Dentro uno ZIP passano, quindi lo ZIP è la via principale e il
 # .bat resta disponibile come ripiego.
 if command -v zip >/dev/null 2>&1; then
-  ( cd "$USCITA" && zip -q -j installa-rustdesk.zip installa-rustdesk.bat )
+  ( cd "$USCITA" && zip -q -j installa-rustdesk.zip installa-rustdesk.bat installa-rustdesk.ps1 )
 elif command -v python3 >/dev/null 2>&1; then
   python3 - "$USCITA" <<'PY'
 import sys, zipfile, os
 d = sys.argv[1]
 with zipfile.ZipFile(os.path.join(d, 'installa-rustdesk.zip'), 'w', zipfile.ZIP_DEFLATED) as z:
-    z.write(os.path.join(d, 'installa-rustdesk.bat'), 'installa-rustdesk.bat')
+    for f in ('installa-rustdesk.bat', 'installa-rustdesk.ps1'):
+        z.write(os.path.join(d, f), f)
 PY
 else
   echo "Attenzione: né zip né python3 disponibili, archivio non creato." >&2
@@ -336,6 +438,27 @@ else
 fi
 
 # --- pagina di download ----------------------------------------------------
+# Se l'eseguibile compilato e' presente lo si preferisce: per il cliente e' un
+# solo doppio clic, senza estrazione e senza il blocco che i browser applicano
+# agli script. Altrimenti si ripiega sull'archivio.
+if [[ -f "${USCITA}/installa-rustdesk.exe" ]]; then
+  SCHEDA='    <p><a class="btn" href="installa-rustdesk.exe" download>Scarica il programma</a></p>
+    <div class="warn">
+      Apri il file scaricato con un doppio clic. Windows chiederà
+      un&rsquo;autorizzazione: rispondi <strong>Sì</strong>.
+    </div>'
+  PASSO=''
+  echo "Trovato installa-rustdesk.exe: la pagina proporrà quello."
+else
+  SCHEDA='    <p><a class="btn" href="installa-rustdesk.zip" download>Scarica il programma</a></p>
+    <div class="warn">
+      Il file scaricato è una cartella compressa: <strong>estraila</strong>, poi apri
+      <code>installa-rustdesk.bat</code> con un doppio clic. Windows chiederà
+      un&rsquo;autorizzazione: rispondi <strong>Sì</strong>.
+    </div>'
+  PASSO='      <li>Apri la cartella compressa scaricata ed <strong>estrai</strong> il contenuto (clic destro &rarr; <code>Estrai tutto</code>).</li>'
+fi
+
 cat > "${USCITA}/index.html" <<'HTML_EOF'
 <!doctype html>
 <html lang="it">
@@ -394,18 +517,13 @@ cat > "${USCITA}/index.html" <<'HTML_EOF'
   <p class="sub">Scarica e avvia il programma, poi comunica al tecnico i due dati che compariranno a schermo.</p>
 
   <div class="card">
-    <p><a class="btn" href="installa-rustdesk.zip" download>Scarica il programma</a></p>
-    <div class="warn">
-      Il file scaricato è una cartella compressa: <strong>estraila</strong>, poi apri
-      <code>installa-rustdesk.bat</code> con un doppio clic. Windows chiederà
-      un'autorizzazione: rispondi <strong>Sì</strong>.
-    </div>
+@@SCHEDA_DOWNLOAD@@
   </div>
 
   <div class="card">
     <h2 style="font-size:17px;margin:0 0 12px;">Cosa succede</h2>
     <ol>
-      <li>Apri la cartella compressa scaricata ed <strong>estrai</strong> il contenuto (clic destro &rarr; <code>Estrai tutto</code>).</li>
+@@PASSO_ESTRAZIONE@@
       <li>Windows potrebbe avvisarti che il file proviene da Internet: scegli <code>Ulteriori informazioni</code> e poi <code>Esegui comunque</code>.</li>
       <li>Alla richiesta di autorizzazione (finestra blu di Windows) rispondi <code>Sì</code>.</li>
       <li>Si apre una finestra nera: lascia che finisca, ci vuole circa un minuto.</li>
@@ -419,6 +537,14 @@ cat > "${USCITA}/index.html" <<'HTML_EOF'
 </body>
 </html>
 HTML_EOF
+
+python3 - "${USCITA}/index.html" "$SCHEDA" "$PASSO" <<'PY'
+import sys
+percorso, scheda, passo = sys.argv[1], sys.argv[2], sys.argv[3]
+t = open(percorso, encoding='utf-8').read()
+t = t.replace('@@SCHEDA_DOWNLOAD@@', scheda).replace('@@PASSO_ESTRAZIONE@@', passo)
+open(percorso, 'w', encoding='utf-8').write(t)
+PY
 
 echo
 echo "Fatto. Pacchetto in ${USCITA}:"

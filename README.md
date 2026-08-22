@@ -135,6 +135,55 @@ Monta la cartella nel servizio `api` (già presente in `deploy/portainer-stack.y
 
 Poi invii al cliente un solo indirizzo: `https://<dominio>/upload/`
 
+### Eseguibile con icona
+
+Lo script genera anche `installa-rustdesk.ps1`, la versione PowerShell dello
+stesso installer, pensata per essere compilata in un `.exe`. Rispetto al file
+batch dentro lo ZIP il cliente guadagna parecchio: un solo doppio clic, niente
+estrazione, niente blocco del browser sugli script, e la richiesta di Windows
+mostra il tuo nome invece di `cmd.exe`.
+
+Su una macchina Windows:
+
+```powershell
+Install-Module ps2exe -Scope CurrentUser
+
+Invoke-PS2EXE .\installa-rustdesk.ps1 .\installa-rustdesk.exe `
+  -iconFile .\branding\elettrosmart.ico `
+  -requireAdmin `
+  -title "Assistenza Remota" `
+  -company "Elettrosmart Sagl" `
+  -version "1.0.0"
+```
+
+`-requireAdmin` incorpora il manifesto di elevazione: Windows chiede i privilegi
+prima ancora di avviare il programma.
+
+Copia poi l'`.exe` nella cartella di pubblicazione e rilancia `genera-client.sh`:
+rilevando il file, la pagina di download proporrà quello al posto dell'archivio,
+e le istruzioni per il cliente si accorciano di conseguenza.
+
+> Ricompila l'eseguibile se cambi dominio o chiave: la configurazione è
+> incorporata al momento della compilazione, e un `.exe` vecchio accanto a un
+> `.bat` rigenerato punterebbe al server sbagliato senza dirlo.
+
+**La firma digitale è un discorso a parte.** Senza un certificato di code
+signing, Windows mostra comunque «Windows ha protetto il PC» al primo avvio.
+L'icona rende il pacchetto riconoscibile, non fidato. Per togliere l'avviso
+serve un certificato OV (la reputazione si costruisce nel tempo) o EV (fiducia
+immediata, costo maggiore).
+
+### L'icona
+
+In [`branding/`](./branding/) trovi `elettrosmart.ico` con sette risoluzioni,
+da 16 a 256 pixel. Sotto i 48 pixel viene disegnata una variante semplificata
+col solo fulmine: la cornice del monitor, a quelle dimensioni, diventerebbe una
+macchia illeggibile.
+
+Il sorgente vettoriale è `elettrosmart.svg`; `genera-icona.py` ridisegna il
+`.ico` senza bisogno di alcuna libreria esterna. Se modifichi i colori o la
+forma, riportali su entrambi i file.
+
 ### Perché uno script e non un eseguibile rinominato
 
 Il metodo storico — rinominare l'eseguibile in
