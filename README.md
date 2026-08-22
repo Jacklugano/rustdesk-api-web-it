@@ -266,7 +266,7 @@ location /ws/relay {
 ### 2. Il backend dichiara l'indirizzo WebSocket
 
 ```yaml
-      - RUSTDESK_API_RUSTDESK_WS_HOST=wss://edesk.tuodominio.ch
+      - RUSTDESK_API_RUSTDESK_WS_HOST=wss://<dominio>
 ```
 
 Il valore viene iniettato nella pagina del client web come `window.ws_host`.
