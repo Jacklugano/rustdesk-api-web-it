@@ -1,0 +1,33 @@
+# Servizio di generazione dei link di assistenza.
+#
+#   sudo cp deploy/assistenza-link.service /etc/systemd/system/
+#   sudo nano /etc/systemd/system/assistenza-link.service   (adatta i percorsi)
+#   sudo systemctl enable --now assistenza-link
+#
+[Unit]
+Description=Generazione link di assistenza RustDesk
+After=network.target docker.service
+
+[Service]
+Type=simple
+User=giacomo
+Group=giacomo
+ExecStart=/usr/bin/python3 /home/giacomo/rustdesk-api-web-it/scripts/servizio-link.py \
+    --url https://edesk.tuodominio.ch \
+    --bind 127.0.0.1 \
+    --porta 21120 \
+    --api http://127.0.0.1:21114 \
+    --pacchetto /opt/rustdesk/pacchetto \
+    --pubblica /opt/rustdesk/downloads
+Restart=on-failure
+RestartSec=5
+
+# Il servizio esegue uno script: gli si concede il minimo indispensabile.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths=/opt/rustdesk/downloads
+
+[Install]
+WantedBy=multi-user.target

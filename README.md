@@ -340,6 +340,63 @@ gia' scaricato.
 > percorso serve proprio a lasciare un collegamento stabile, che per
 > definizione non puo' dipendere da un link che scade.
 
+### Generare i link dal telefono, dentro la console
+
+`scripts/servizio-link.py` espone il generatore come pagina web, **protetta dal
+login di RustDesk**: non ha una propria password, ma chiede alla API chi sia il
+portatore del token e procede solo se e' un amministratore. Chi non e'
+collegato alla console non puo' usarla.
+
+La pagina (`web-assistenza/assistenza.html`) e' pensata per lo schermo di un
+telefono: un menu per la durata, un pulsante che genera, il link con il tasto
+copia, e l'elenco dei link attivi con la revoca.
+
+#### Installazione
+
+**1. La pagina**, accanto alla console, cosi' condivide dominio e sessione:
+
+```bash
+cp web-assistenza/assistenza.html /opt/rustdesk/admin-it/
+```
+
+Sara' raggiungibile su `https://<dominio>/_admin/assistenza.html`.
+
+**2. Il servizio**, come unita' systemd:
+
+```bash
+sudo cp deploy/assistenza-link.service /etc/systemd/system/
+sudo nano /etc/systemd/system/assistenza-link.service    # adatta utente e percorsi
+sudo systemctl enable --now assistenza-link
+```
+
+**3. Il proxy.** Nel frontend HAProxy, una ACL `Path starts with: /assistenza-api`
+verso un backend che punta a `<ip-del-server>:21120`. Va messa **sopra** la
+regola generica del dominio, come per le WebSocket.
+
+Se HAProxy gira su un'altra macchina, il servizio deve ascoltare sull'indirizzo
+di rete invece che su `127.0.0.1` (`--bind`), e la porta va limitata al solo
+proxy:
+
+```bash
+sudo ufw allow from <ip-del-proxy> to any port 21120 proto tcp
+```
+
+#### Sulla sicurezza
+
+Questo servizio **esegue uno script sul server**. Le difese sono tre:
+
+- ogni richiesta e' validata dalla API di RustDesk, e serve il privilegio di
+  amministratore;
+- lo script viene invocato con una lista di argomenti, mai attraverso una
+  shell, quindi non esiste iniezione di comandi; l'identificativo da revocare
+  e' comunque validato con un'espressione regolare;
+- l'unita' systemd gira senza privilegi aggiuntivi e puo' scrivere solo nella
+  cartella di pubblicazione.
+
+Resta il fatto che e' una superficie in piu': esponilo **solo** attraverso il
+reverse proxy in HTTPS, mai direttamente su Internet, e limita la porta con il
+firewall.
+
 ### Da sapere
 
 - **La cartella `/upload` è pubblica**, senza autenticazione: chiunque conosca

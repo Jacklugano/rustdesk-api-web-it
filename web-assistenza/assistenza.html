@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Link di assistenza</title>
+<style>
+  :root {
+    --bg:#f4f6fb; --surface:#fff; --border:#e4e9f2;
+    --text:#1f2733; --muted:#6b7a90; --primary:#3b6ef0; --danger:#dc2626;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#0f141d; --surface:#171e2a; --border:#273140;
+            --text:#e6ebf2; --muted:#93a1b5; }
+  }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body { margin:0; padding:20px 16px 40px; background:var(--bg); color:var(--text);
+         font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; line-height:1.5; }
+  .wrap { max-width:560px; margin:0 auto; }
+  h1 { font-size:20px; margin:0 0 4px; }
+  .sub { color:var(--muted); font-size:14px; margin:0 0 20px; }
+  .card { background:var(--surface); border:1px solid var(--border);
+          border-radius:12px; padding:16px; margin-bottom:16px; }
+  label { display:block; font-size:13px; color:var(--muted); margin-bottom:6px; }
+  select, button { font:inherit; border-radius:10px; }
+  select { width:100%; padding:12px; border:1px solid var(--border);
+           background:var(--surface); color:var(--text); margin-bottom:12px; }
+  /* i tocchi sul telefono vogliono bersagli ampi: 48px e' la soglia comoda */
+  button { min-height:48px; padding:12px 18px; border:none; cursor:pointer;
+           font-weight:600; width:100%; }
+  .primario { background:var(--primary); color:#fff; font-size:16px; }
+  .primario:disabled { opacity:.55; }
+  .esito { margin-top:14px; padding:14px; border-radius:10px;
+           background:var(--bg); border:1px solid var(--border); }
+  .link { font-family:ui-monospace,Menlo,Consolas,monospace; font-size:13px;
+          word-break:break-all; margin-bottom:10px; display:block; }
+  .copia { background:#16a34a; color:#fff; }
+  .errore { color:var(--danger); font-size:14px; }
+  ul { list-style:none; padding:0; margin:0; }
+  li { display:flex; align-items:center; gap:10px; padding:10px 0;
+       border-bottom:1px solid var(--border); font-size:14px; }
+  li:last-child { border-bottom:none; }
+  li code { flex:1; font-size:12px; word-break:break-all; }
+  li button { width:auto; min-height:38px; padding:6px 14px; font-size:13px;
+              background:transparent; color:var(--danger);
+              border:1px solid var(--border); }
+  h2 { font-size:15px; margin:0 0 8px; color:var(--muted); }
+  .vuoto { color:var(--muted); font-size:14px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Link di assistenza</h1>
+  <p class="sub">Genera un collegamento temporaneo da inviare al cliente.</p>
+
+  <div class="card">
+    <label for="ore">Validità</label>
+    <select id="ore">
+      <option value="1">1 ora</option>
+      <option value="4">4 ore</option>
+      <option value="8" selected>8 ore</option>
+      <option value="24">1 giorno</option>
+    </select>
+    <button id="genera" class="primario">Genera link</button>
+    <div id="esito"></div>
+  </div>
+
+  <div class="card">
+    <h2>Link attivi</h2>
+    <ul id="elenco"><li class="vuoto">Caricamento…</li></ul>
+  </div>
+</div>
+
+<script>
+  const API = '/assistenza-api';
+  // Lo stesso token della console: la pagina vive sullo stesso dominio,
+  // quindi legge la sessione gia' aperta senza chiedere altre credenziali.
+  const token = localStorage.getItem('access_token');
+
+  const $ = (id) => document.getElementById(id);
+
+  async function chiama(percorso, opzioni = {}) {
+    const r = await fetch(API + percorso, {
+      ...opzioni,
+      headers: { 'Content-Type': 'application/json', 'api-token': token || '', ...(opzioni.headers || {}) },
+    });
+    if (r.status === 401) throw new Error('Sessione scaduta. Rientra nella console e riprova.');
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.errore || 'Errore del server.');
+    return d;
+  }
+
+  function mostraErrore(testo) {
+    $('esito').innerHTML = '<div class="esito errore"></div>';
+    $('esito').firstChild.textContent = testo;
+  }
+
+  async function genera() {
+    const b = $('genera');
+    b.disabled = true; b.textContent = 'Genero…';
+    try {
+      const d = await chiama('/genera', { method: 'POST', body: JSON.stringify({ ore: +$('ore').value }) });
+      const box = document.createElement('div');
+      box.className = 'esito';
+      const a = document.createElement('code');
+      a.className = 'link'; a.textContent = d.link;
+      const copia = document.createElement('button');
+      copia.className = 'copia'; copia.textContent = 'Copia il link';
+      copia.onclick = async () => {
+        try { await navigator.clipboard.writeText(d.link); copia.textContent = 'Copiato'; }
+        catch { copia.textContent = 'Copia non riuscita, selezionalo a mano'; }
+      };
+      box.append(a, copia);
+      $('esito').replaceChildren(box);
+      elenco();
+    } catch (e) { mostraErrore(e.message); }
+    finally { b.disabled = false; b.textContent = 'Genera link'; }
+  }
+
+  async function elenco() {
+    const ul = $('elenco');
+    try {
+      const d = await chiama('/elenco');
+      ul.replaceChildren();
+      if (!d.link || !d.link.length) {
+        const li = document.createElement('li');
+        li.className = 'vuoto'; li.textContent = 'Nessun link attivo.';
+        return ul.append(li);
+      }
+      for (const v of d.link) {
+        const li = document.createElement('li');
+        const c = document.createElement('code');
+        c.textContent = v.id + ' — ' + v.descrizione;
+        const b = document.createElement('button');
+        b.textContent = 'Revoca';
+        b.onclick = async () => {
+          b.disabled = true;
+          try { await chiama('/revoca', { method: 'POST', body: JSON.stringify({ id: v.id }) }); elenco(); }
+          catch (e) { mostraErrore(e.message); b.disabled = false; }
+        };
+        li.append(c, b);
+        ul.append(li);
+      }
+    } catch (e) {
+      ul.replaceChildren();
+      const li = document.createElement('li');
+      li.className = 'errore'; li.textContent = e.message;
+      ul.append(li);
+    }
+  }
+
+  if (!token) {
+    mostraErrore('Non risulti collegato. Apri prima la console e accedi.');
+    $('genera').disabled = true;
+    $('elenco').replaceChildren();
+  } else {
+    $('genera').onclick = genera;
+    elenco();
+  }
+</script>
+</body>
+</html>
