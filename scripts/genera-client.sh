@@ -321,6 +321,62 @@ BAT_EOF
 # batch (pieno di % e !) non viene toccato dalla shell.
 sed -i "s|@@CONFIG@@|${CONFIG}|; s|@@EXE_URL@@|${EXE_URL}|" "${USCITA}/installa-rustdesk.bat"
 
+# --- pacchetto portable ----------------------------------------------------
+# Nessuna installazione e nessun privilegio: il cliente esegue, legge ID e
+# password dalla finestra di RustDesk, e a fine intervento non resta nulla.
+# Gira l'eseguibile ufficiale, firmato, quindi niente avviso SmartScreen.
+if [[ -f "${USCITA}/${EXE}" ]]; then
+  PORTATILE="$(mktemp -d)"
+  cp "${USCITA}/${EXE}" "${PORTATILE}/rustdesk.exe"
+
+  cat > "${PORTATILE}/avvia-assistenza.bat" <<'PORT_EOF'
+@echo off
+setlocal
+title Assistenza remota
+cd /d "%~dp0"
+
+if not exist "rustdesk.exe" (
+  echo.
+  echo  Manca il file rustdesk.exe.
+  echo  Estrai TUTTO il contenuto della cartella compressa, non solo questo file.
+  echo.
+  pause
+  exit /b 1
+)
+
+echo.
+echo  Avvio in corso, attendi qualche secondo...
+
+rem applica la configurazione del server, poi apre il programma
+rustdesk.exe --config @@CONFIG@@
+start "" "rustdesk.exe"
+
+echo.
+echo  Si aprira' una finestra con il tuo ID e la tua password:
+echo  comunicali al tecnico e lascia la finestra aperta.
+echo.
+timeout /t 8 /nobreak >nul
+PORT_EOF
+
+  sed -i "s|@@CONFIG@@|${CONFIG}|" "${PORTATILE}/avvia-assistenza.bat"
+
+  if command -v zip >/dev/null 2>&1; then
+    ( cd "$PORTATILE" && zip -q -j "${USCITA}/assistenza-rapida.zip" avvia-assistenza.bat rustdesk.exe )
+  elif command -v python3 >/dev/null 2>&1; then
+    python3 - "$PORTATILE" "${USCITA}/assistenza-rapida.zip" <<'PYZIP'
+import sys, zipfile, os
+d, out = sys.argv[1], sys.argv[2]
+with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED) as z:
+    for f in ('avvia-assistenza.bat', 'rustdesk.exe'):
+        z.write(os.path.join(d, f), f)
+PYZIP
+  fi
+  rm -rf "$PORTATILE"
+  echo "Pacchetto portable creato."
+else
+  echo "Attenzione: manca ${EXE}, pacchetto portable non creato." >&2
+fi
+
 # --- icona ----------------------------------------------------------------
 # Serve solo al momento della compilazione dell'eseguibile, ma pubblicandola
 # qui la si scarica dalla macchina Windows con lo stesso indirizzo degli altri
@@ -465,25 +521,24 @@ if [[ "$CON_EXE" -eq 1 ]]; then
 fi
 
 # --- pagina di download ----------------------------------------------------
-# Se l'eseguibile compilato e' presente lo si preferisce: per il cliente e' un
-# solo doppio clic, senza estrazione e senza il blocco che i browser applicano
-# agli script. Altrimenti si ripiega sull'archivio.
-if [[ -f "${USCITA}/installa-rustdesk.exe" ]]; then
-  SCHEDA='    <p><a class="btn" href="installa-rustdesk.exe" download>Scarica il programma</a></p>
-    <div class="warn">
-      Apri il file scaricato con un doppio clic. Windows chiederà
-      un&rsquo;autorizzazione: rispondi <strong>Sì</strong>.
-    </div>'
-  PASSO=''
-  echo "Trovato installa-rustdesk.exe: la pagina proporrà quello."
+# Due percorsi con priorita' diverse. Il portable e' in evidenza: usa
+# l'eseguibile ufficiale firmato, non chiede privilegi e non lascia tracce,
+# quindi e' quello giusto per l'assistenza occasionale. L'installazione
+# permanente resta piu' in basso, in tono minore.
+if [[ -f "${USCITA}/assistenza-rapida.zip" ]]; then
+  PORTABILE_OK=1
 else
-  SCHEDA='    <p><a class="btn" href="installa-rustdesk.zip" download>Scarica il programma</a></p>
-    <div class="warn">
-      Il file scaricato è una cartella compressa: <strong>estraila</strong>, poi apri
-      <code>installa-rustdesk.bat</code> con un doppio clic. Windows chiederà
-      un&rsquo;autorizzazione: rispondi <strong>Sì</strong>.
-    </div>'
-  PASSO='      <li>Apri la cartella compressa scaricata ed <strong>estrai</strong> il contenuto (clic destro &rarr; <code>Estrai tutto</code>).</li>'
+  PORTABILE_OK=0
+  echo "Attenzione: la pagina proporra' solo l'installazione." >&2
+fi
+
+if [[ -f "${USCITA}/installa-rustdesk.exe" ]]; then
+  INSTALL_FILE="installa-rustdesk.exe"
+  INSTALL_NOTA="Aprilo con un doppio clic e rispondi <strong>Sì</strong> alla richiesta di Windows."
+  echo "Trovato installa-rustdesk.exe: sara' quello proposto per l'installazione."
+else
+  INSTALL_FILE="installa-rustdesk.zip"
+  INSTALL_NOTA="Estrai la cartella compressa, apri <code>installa-rustdesk.bat</code> e rispondi <strong>Sì</strong> alla richiesta di Windows."
 fi
 
 cat > "${USCITA}/index.html" <<'HTML_EOF'
@@ -536,42 +591,69 @@ cat > "${USCITA}/index.html" <<'HTML_EOF'
     padding: 2px 6px; border-radius: 4px; font-size: 13px;
   }
   footer { color: var(--muted); font-size: 13px; text-align: center; }
+  h2 { font-size: 17px; margin: 0 0 12px; }
+  /* l'installazione permanente e' un'opzione, non la scelta principale:
+     tono ridotto per non contendere l'attenzione al pulsante sopra */
+  .secondaria { border-style: dashed; padding: 18px 24px; }
+  .secondaria h2 { font-size: 15px; color: var(--muted); }
+  .secondaria p { margin: 0; font-size: 14px; color: var(--muted); }
+  .secondaria a { color: var(--primary); font-weight: 600; }
 </style>
 </head>
 <body>
 <div class="wrap">
   <h1>Assistenza remota</h1>
-  <p class="sub">Scarica e avvia il programma, poi comunica al tecnico i due dati che compariranno a schermo.</p>
+  <p class="sub">Scarica il programma e comunica al tecnico i due codici che compariranno a schermo.</p>
 
   <div class="card">
-@@SCHEDA_DOWNLOAD@@
+@@SCHEDA_PORTABLE@@
   </div>
 
   <div class="card">
-    <h2 style="font-size:17px;margin:0 0 12px;">Cosa succede</h2>
+    <h2>Cosa succede</h2>
     <ol>
-@@PASSO_ESTRAZIONE@@
+      <li>Apri la cartella compressa scaricata ed <strong>estrai</strong> il contenuto (clic destro &rarr; <code>Estrai tutto</code>).</li>
+      <li>Fai doppio clic su <code>avvia-assistenza.bat</code>.</li>
       <li>Windows potrebbe avvisarti che il file proviene da Internet: scegli <code>Ulteriori informazioni</code> e poi <code>Esegui comunque</code>.</li>
-      <li>Alla richiesta di autorizzazione (finestra blu di Windows) rispondi <code>Sì</code>.</li>
-      <li>Si apre una finestra nera: lascia che finisca, ci vuole circa un minuto.</li>
-      <li>Alla fine compaiono un <strong>ID</strong> e una <strong>Password</strong>.</li>
-      <li>Comunica quei due dati al tecnico, poi puoi chiudere la finestra.</li>
+      <li>Si apre la finestra di RustDesk con un <strong>ID</strong> e una <strong>Password</strong>.</li>
+      <li>Comunicali al tecnico e <strong>lascia la finestra aperta</strong> per tutta la durata dell&rsquo;intervento.</li>
     </ol>
   </div>
 
+@@SCHEDA_INSTALL@@
   <footer>Il collegamento è cifrato e avviene solo quando lo autorizzi.</footer>
 </div>
 </body>
 </html>
 HTML_EOF
 
-python3 - "${USCITA}/index.html" "$SCHEDA" "$PASSO" <<'PY'
+if [[ "$PORTABILE_OK" -eq 1 ]]; then
+  SCHEDA_PORT='    <p><a class="btn" href="assistenza-rapida.zip" download>Scarica il programma</a></p>
+    <div class="warn">
+      Non installa nulla sul computer e non richiede permessi di amministratore.
+      A fine intervento basta chiudere la finestra.
+    </div>'
+  SCHEDA_INST='  <div class="card secondaria">
+    <h2>Assistenza continuativa</h2>
+    <p>Se il tecnico ti ha chiesto di lasciare il collegamento sempre attivo, scarica
+    invece <a href="'"$INSTALL_FILE"'" download>la versione con installazione</a>.
+    '"$INSTALL_NOTA"'</p>
+  </div>
+
+'
+else
+  SCHEDA_PORT='    <p><a class="btn" href="'"$INSTALL_FILE"'" download>Scarica il programma</a></p>
+    <div class="warn">'"$INSTALL_NOTA"'</div>'
+  SCHEDA_INST=''
+fi
+
+python3 - "${USCITA}/index.html" "$SCHEDA_PORT" "$SCHEDA_INST" <<'PYPAG'
 import sys
-percorso, scheda, passo = sys.argv[1], sys.argv[2], sys.argv[3]
+percorso, portable, install = sys.argv[1], sys.argv[2], sys.argv[3]
 t = open(percorso, encoding='utf-8').read()
-t = t.replace('@@SCHEDA_DOWNLOAD@@', scheda).replace('@@PASSO_ESTRAZIONE@@', passo)
+t = t.replace('@@SCHEDA_PORTABLE@@', portable).replace('@@SCHEDA_INSTALL@@', install)
 open(percorso, 'w', encoding='utf-8').write(t)
-PY
+PYPAG
 
 echo
 echo "Fatto. Pacchetto in ${USCITA}:"

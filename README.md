@@ -119,13 +119,32 @@ del server») o indicare il file con `--chiave`.
 > con uno stack creato in Portainer i volumi relativi finiscono nella sua
 > directory di lavoro interna, non dove ci si aspetta.
 
-Genera tre file in `/opt/rustdesk/downloads`:
+Genera nella cartella di pubblicazione:
 
 | File | Contenuto |
 |---|---|
 | `index.html` | Pagina di download in italiano, con le istruzioni per il cliente |
-| `installa-rustdesk.bat` | Installazione automatica: scarica, installa, configura, imposta una password casuale e mostra ID e password |
+| `assistenza-rapida.zip` | **Portable**: RustDesk ufficiale piu' uno script che lo configura e lo avvia |
+| `installa-rustdesk.zip` | Installazione permanente (script batch e PowerShell) |
+| `installa-rustdesk.ps1` | Sorgente per compilare l'eseguibile con icona |
 | `rustdesk.exe` | L'eseguibile ufficiale, servito dal tuo server invece che da GitHub |
+| `elettrosmart.ico` | L'icona, per la compilazione |
+
+### I due percorsi sulla pagina
+
+La pagina propone **il portable in evidenza** e l'installazione permanente piu'
+in basso, in tono minore. La scelta non e' estetica:
+
+- **Portable** — nessuna installazione, nessun privilegio di amministratore,
+  nessuna traccia sulla macchina a fine intervento. Gira l'eseguibile ufficiale
+  **firmato da RustDesk**, quindi niente avviso SmartScreen. E' quello giusto
+  per l'assistenza occasionale, ed e' il caso piu' frequente.
+- **Installazione** — serve solo quando vuoi l'accesso non presidiato, che
+  richiede il servizio Windows e quindi i privilegi. Il portable non
+  sopravvive al riavvio e cambia password a ogni esecuzione.
+
+Se manca `rustdesk.exe` il portable non viene creato e la pagina ripiega
+sulla sola installazione, segnalandolo.
 
 Monta la cartella nel servizio `api` (già presente in `deploy/portainer-stack.yml`):
 
