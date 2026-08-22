@@ -163,7 +163,7 @@ solo il modello con i segnaposto. Poi:
 Install-Module ps2exe -Scope CurrentUser
 
 Invoke-PS2EXE .\installa-rustdesk.ps1 .\installa-rustdesk.exe `
-  -iconFile .\branding\elettrosmart.ico `
+  -iconFile .\elettrosmart.ico `
   -requireAdmin `
   -title "Assistenza Remota" `
   -company "Elettrosmart Sagl" `
@@ -240,8 +240,8 @@ Su pfSense, nel frontend HAProxy, due ACL e due backend:
 
 | Percorso | Backend |
 |---|---|
-| `/ws/id` | `10.10.17.19:21118` (hbbs) |
-| `/ws/relay` | `10.10.17.19:21119` (hbbr) |
+| `/ws/id` | `<ip-del-server>:21118` (hbbs) |
+| `/ws/relay` | `<ip-del-server>:21119` (hbbr) |
 
 Nel backend attiva l'opzione per l'inoltro delle WebSocket e assicurati che
 l'header `X-Real-IP` venga impostato dal proxy.
