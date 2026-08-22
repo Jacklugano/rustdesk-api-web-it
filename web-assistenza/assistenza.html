@@ -86,8 +86,20 @@
       headers: { 'Content-Type': 'application/json', 'api-token': token || '', ...(opzioni.headers || {}) },
     });
     if (r.status === 401) throw new Error('Sessione scaduta. Rientra nella console e riprova.');
-    const d = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(d.errore || 'Errore del server.');
+    const testo = await r.text();
+    let d = {};
+    try { d = JSON.parse(testo); } catch { /* risposta non JSON: vedi sotto */ }
+    if (!r.ok || d.errore) {
+      // Se la risposta non e' JSON, la chiamata non ha raggiunto il servizio:
+      // quasi sempre manca la regola del reverse proxy su /assistenza-api e la
+      // richiesta finisce sulla console. Dirlo esplicitamente evita mezz'ora
+      // di ricerche nella direzione sbagliata.
+      if (!d.errore && !testo.trim().startsWith('{')) {
+        throw new Error('HTTP ' + r.status + ' — la richiesta non raggiunge il servizio. '
+          + 'Controlla la regola /assistenza-api sul reverse proxy.');
+      }
+      throw new Error(d.errore || ('HTTP ' + r.status));
+    }
     return d;
   }
 
