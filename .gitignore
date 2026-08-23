@@ -17,3 +17,7 @@ yarn-error.log*
 *.local
 
 yarn.lock
+
+# cache di Python
+__pycache__/
+*.pyc

@@ -37,16 +37,10 @@ ID_VALIDO = re.compile(r'^[0-9a-f]{6,64}$')
 CFG = {}
 
 
-def utente_autorizzato(token):
-    """Chiede alla API di RustDesk chi e' il portatore del token.
-
-    La verifica sta qui, non nel browser: una pagina puo' mentire, questa
-    chiamata no. Serve un token valido e il privilegio di amministratore.
-    """
-    if not token or len(token) > 4096:
-        return None
+def _chiama_api(percorso, token):
+    """Interroga la API di RustDesk con il token dell'utente."""
     req = urllib.request.Request(
-        CFG['api'].rstrip('/') + '/api/admin/user/current',
+        CFG['api'].rstrip('/') + percorso,
         headers={'api-token': token},
     )
     try:
@@ -56,13 +50,31 @@ def utente_autorizzato(token):
             dati = json.loads(r.read().decode('utf-8'))
     except (urllib.error.URLError, ValueError, TimeoutError, OSError):
         return None
-
     if dati.get('code') not in (0, None):
         return None
-    u = dati.get('data') or dati
-    if not u.get('is_admin'):
+    return dati
+
+
+def utente_autorizzato(token):
+    """Verifica identita' e privilegi chiedendo alla API di RustDesk.
+
+    Il profilo restituito da /user/current non espone il ruolo, quindi non e'
+    sufficiente: si interroga anche un endpoint riservato agli amministratori,
+    lasciando che sia RustDesk stessa a decidere. Un utente normale ottiene un
+    rifiuto e non arriva qui.
+    """
+    if not token or len(token) > 4096:
         return None
-    return u.get('username') or 'admin'
+
+    profilo = _chiama_api('/api/admin/user/current', token)
+    if not profilo:
+        return None
+
+    if _chiama_api('/api/admin/user/list?page=1&page_size=1', token) is None:
+        return None
+
+    dati = profilo.get('data') or {}
+    return dati.get('username') or 'amministratore'
 
 
 def esegui(*argomenti):
