@@ -340,6 +340,11 @@ gia' scaricato.
 > percorso serve proprio a lasciare un collegamento stabile, che per
 > definizione non puo' dipendere da un link che scade.
 
+Lo script mantiene inoltre `rustdesk.exe` alla **radice** della cartella
+pubblicata: gli installer lo scaricano da li' (`/upload/rustdesk.exe`).
+E' il client RustDesk standard, senza chiave ne' configurazione, quindi
+tenerlo pubblico non espone nulla.
+
 ### Generare i link dal telefono, dentro la console
 
 `scripts/servizio-link.py` espone il generatore come pagina web, **protetta dal

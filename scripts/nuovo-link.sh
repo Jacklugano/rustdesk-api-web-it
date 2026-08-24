@@ -106,6 +106,14 @@ for f in "$PACCHETTO"/*; do
   ln "$f" "${DEST}/${n}" 2>/dev/null || cp "$f" "${DEST}/"
 done
 
+# Gli installer scaricano il programma dalla radice pubblicata
+# (/upload/rustdesk.exe): il binario generico deve quindi stare li'. Non
+# contiene ne' chiave ne' configurazione, pubblicarlo non espone nulla.
+if [[ -f "${PACCHETTO}/rustdesk.exe" ]]; then
+  ln -f "${PACCHETTO}/rustdesk.exe" "${PUBBLICA}/rustdesk.exe" 2>/dev/null \
+    || cp -f "${PACCHETTO}/rustdesk.exe" "${PUBBLICA}/rustdesk.exe"
+fi
+
 # --- configurazione servita a parte, non incorporata ------------------------
 # La chiave resta fuori dal pacchetto scaricato: il programma la preleva
 # all'avvio da questo indirizzo. Alla scadenza il file sparisce insieme alla
