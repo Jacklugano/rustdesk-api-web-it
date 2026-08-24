@@ -251,6 +251,9 @@ if errorlevel 1 (
 
 set "CFG=@@CONFIG@@"
 set "EXEURL=@@EXE_URL@@"
+set "DOMINIO=@@DOMINIO@@"
+set "APIURL=@@API@@"
+set "CHIAVE=@@CHIAVE@@"
 
 rem password permanente casuale di 12 caratteri
 set "ALFA=ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789"
@@ -287,6 +290,23 @@ timeout /t 10 /nobreak >nul
 "%RD%" --config %CFG%
 "%RD%" --password %PWD%
 
+rem Alcune versioni applicano host e chiave della stringa --config ma
+rem ignorano il campo 'api': senza, il client si inventa http://<host>:21114
+rem e il login va in timeout. Le opzioni si scrivono quindi anche nei file
+rem di configurazione, sia dell'utente che del servizio.
+for %%d in ("%APPDATA%\RustDesk\config" "%WinDir%\ServiceProfiles\LocalService\AppData\Roaming\RustDesk\config") do (
+  if not exist "%%~d" mkdir "%%~d"
+  > "%%~d\RustDesk2.toml" (
+    echo rendezvous_server = '%DOMINIO%:21116'
+    echo.
+    echo [options]
+    echo custom-rendezvous-server = '%DOMINIO%'
+    echo relay-server = '%DOMINIO%:21117'
+    echo api-server = '%APIURL%'
+    echo key = '%CHIAVE%'
+  )
+)
+
 rem il servizio rilegge la configurazione solo al riavvio
 net stop RustDesk >nul 2>&1
 net start RustDesk >nul 2>&1
@@ -319,7 +339,7 @@ BAT_EOF
 
 # I segnaposto sono sostituiti dopo la scrittura, così il contenuto del file
 # batch (pieno di % e !) non viene toccato dalla shell.
-sed -i "s|@@CONFIG@@|${CONFIG}|; s|@@EXE_URL@@|${EXE_URL}|" "${USCITA}/installa-rustdesk.bat"
+sed -i "s|@@CONFIG@@|${CONFIG}|; s|@@EXE_URL@@|${EXE_URL}|; s|@@DOMINIO@@|${DOMINIO}|g; s|@@API@@|${API_URL}|g; s|@@CHIAVE@@|${CHIAVE}|g" "${USCITA}/installa-rustdesk.bat"
 
 # --- pacchetto portable ----------------------------------------------------
 # Nessuna installazione e nessun privilegio: il cliente esegue, legge ID e
@@ -450,6 +470,28 @@ try {
     & $rustdesk --config $Cfg
     & $rustdesk --password $Password
 
+    # Alcune versioni applicano host e chiave della stringa --config ma
+    # ignorano il campo 'api': senza, il client si inventa http://<host>:21114
+    # e il login va in timeout. Le opzioni si scrivono quindi anche nei file
+    # di configurazione, sia dell'utente che del servizio.
+    $Toml = @'
+rendezvous_server = '@@DOMINIO@@:21116'
+
+[options]
+custom-rendezvous-server = '@@DOMINIO@@'
+relay-server = '@@DOMINIO@@:21117'
+api-server = '@@API@@'
+key = '@@CHIAVE@@'
+'@
+    $percorsi = @(
+        (Join-Path $env:APPDATA 'RustDesk\config\RustDesk2.toml'),
+        (Join-Path $env:WinDir 'ServiceProfiles\LocalService\AppData\Roaming\RustDesk\config\RustDesk2.toml')
+    )
+    foreach ($p in $percorsi) {
+        New-Item -ItemType Directory -Force -Path (Split-Path $p) | Out-Null
+        Set-Content -Path $p -Value $Toml -Encoding ASCII
+    }
+
     # il servizio rilegge la configurazione solo al riavvio
     Restart-Service -Name 'RustDesk' -Force -ErrorAction SilentlyContinue
     Start-Sleep -Seconds 5
@@ -485,7 +527,7 @@ catch {
 }
 PS_EOF
 
-sed -i "s|@@CONFIG@@|${CONFIG}|; s|@@EXE_URL@@|${EXE_URL}|" "${USCITA}/installa-rustdesk.ps1"
+sed -i "s|@@CONFIG@@|${CONFIG}|; s|@@EXE_URL@@|${EXE_URL}|; s|@@DOMINIO@@|${DOMINIO}|g; s|@@API@@|${API_URL}|g; s|@@CHIAVE@@|${CHIAVE}|g" "${USCITA}/installa-rustdesk.ps1"
 
 # --- archivio ZIP ----------------------------------------------------------
 # Chrome ed Edge bloccano il download diretto dei file .bat, spesso senza
