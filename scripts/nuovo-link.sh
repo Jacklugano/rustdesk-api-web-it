@@ -109,7 +109,11 @@ done
 # Gli installer scaricano il programma dalla radice pubblicata
 # (/upload/rustdesk.exe): il binario generico deve quindi stare li'. Non
 # contiene ne' chiave ne' configurazione, pubblicarlo non espone nulla.
-if [[ -f "${PACCHETTO}/rustdesk.exe" ]]; then
+# Il test -ef confronta gli inode: se il collegamento c'e' gia' non si tocca
+# nulla. Senza, sia ln che cp si rifiutano ("sono lo stesso file") e con
+# set -e l'intera generazione del link si fermerebbe.
+if [[ -f "${PACCHETTO}/rustdesk.exe" ]] \
+   && ! [[ "${PACCHETTO}/rustdesk.exe" -ef "${PUBBLICA}/rustdesk.exe" ]]; then
   ln -f "${PACCHETTO}/rustdesk.exe" "${PUBBLICA}/rustdesk.exe" 2>/dev/null \
     || cp -f "${PACCHETTO}/rustdesk.exe" "${PUBBLICA}/rustdesk.exe"
 fi
